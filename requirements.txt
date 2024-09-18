@@ -1,2 +1,4 @@
+deap==1.4.1
 numpy==2.1.1
 pygame==2.6.0
+tqdm==4.66.5
