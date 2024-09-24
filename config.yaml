@@ -1,0 +1,4 @@
+population_size: 200
+generations: 10
+p_crossover: 0.5
+p_mutation: 0.2
