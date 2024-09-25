@@ -12,7 +12,7 @@ from naming import get_timed_name
 from plots import plot_stats
 
 
-def main(
+def evolution(
         toolbox: base.Toolbox,
         config: dict,
         stats: tools.Statistics,
@@ -28,7 +28,9 @@ def main(
     Returns:
         _type_: returns the population as well as the logbook
     """
-    pop = toolbox.population(n=config["population_size"])
+    mu = config["population_size"]
+    n_elites = config["elitism_size"]
+    pop = toolbox.population(n=mu)
     n_generations = config["generations"]
     crossover_prob = config["p_crossover"]
     mutation_prob = config["p_mutation"]
@@ -68,11 +70,21 @@ def main(
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
 
-        # The bottom population is entirely replaced by the offspring
+        # elitism with len(pop)-len(offspring) elites
         # pop.sort(reverse=True, key=lambda x: x.fitness.values)
         # pop[-len(offspring):] = offspring
-        pop = sorted(pop + offspring, key=lambda x: x.fitness.values, reverse=True)[:len(pop)]
-        assert config["population_size"] == len(pop)
+
+        # lambda + mu replacement
+        #pop = sorted(pop + offspring, key=lambda x: x.fitness.values, reverse=True)[:len(pop)]
+
+        # Tournament selection (with elitism)
+        elite = tools.selBest(pop, n_elites)
+        pop = toolbox.replace(pop + offspring, k=(mu-n_elites))
+        pop.extend(elite)
+
+        # make sure population size stays constant
+        assert mu == len(pop)
+
         max_fitness = max(max_fitness, *[ind.fitness.values for ind in pop])
         # record value for generations
         logbook.record(gen=(n_generation+1), **stats.compile(pop))
@@ -88,20 +100,20 @@ if __name__ == '__main__':
         config = yaml.safe_load(f)
 
     # create run directory
-    EXPERIMENT_NAME = "../experiments/test_evo"
+    EXPERIMENT_NAME = os.path.join("../experiments/", get_timed_name(prefix=config["name"]))
 
     # initialize directories for running the experiment
     if not os.path.exists(EXPERIMENT_NAME):
         os.makedirs(EXPERIMENT_NAME)
 
-    nc = NeuralController(n_inputs=20, n_outputs=5, hidden_size=5)
+    nc = NeuralController(n_inputs=config["n_inputs"], n_outputs=config["n_outputs"], hidden_size=config["hidden_size"])
     # add correct individual size to config
     config["individual_size"] = nc.get_genome_size()
  
     env = Environment(
         experiment_name=EXPERIMENT_NAME,  # this is actually a path!
         multiplemode="no",
-        enemies=[2],
+        enemies=config["train_enemy"],
         player_controller=nc,
         visuals=False,
     )
@@ -114,31 +126,42 @@ if __name__ == '__main__':
         default_fitness, p_life, e_life, time = env.play(
             pcont=individual
         )  # pcont is actually the genome (bad naming)
-        return default_fitness,
+        return default_fitness,       
 
     creator.create("FitnessMax", base.Fitness, weights=(1.0,))
     creator.create("Individual", list, fitness=creator.FitnessMax)
 
-    # individuals + initialization
     toolbox = base.Toolbox()
-    toolbox.register("attribute", random.uniform, -10, 10)  # allow positive and negative values
-    toolbox.register("individual", tools.initRepeat, creator.Individual,
-                    toolbox.attribute, n=config["individual_size"])
+    # individual + initialization
+    toolbox.register("attribute", random.uniform, config["init_low"], config["init_up"])  # allow positive and negative values
+    toolbox.register(
+        "individual",
+        tools.initRepeat,
+        creator.Individual,
+        toolbox.attribute,
+        n=config["individual_size"]
+    )
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
-    # mating, mutation selection (for mating and mutation), evaluation function
+    # mating, mutation, selection (for mating and mutation), replacement selection and evaluation function
     #toolbox.register("mate", tools.cxTwoPoint)
     toolbox.register(
         "mate",
         tools.cxSimulatedBinary,
-        eta=10.0,
-        #low=10,
-        #up=10
+        eta=config["SBX_eta"]
     )
     #toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=1, indpb=0.1)
-    toolbox.register("mutate", tools.mutPolynomialBounded, eta=10, low=-10, up=10, indpb=0.1)
+    toolbox.register(
+        "mutate",
+        tools.mutPolynomialBounded,
+        eta=config["polynomial_eta"],
+        low=config["polynomial_low"],
+        up=config["polynomial_up"],
+        indpb=config["polynomial_indpb"]
+    )
 
-    toolbox.register("select", tools.selTournament, tournsize=3)
+    toolbox.register("select", tools.selTournament, tournsize=config["sel_tournament_size"])
+    toolbox.register("replace", tools.selTournament, tournsize=config["rep_tournament_size"])
     toolbox.register("evaluate", evaluate)
 
     # defining statistics
@@ -149,7 +172,7 @@ if __name__ == '__main__':
     stats.register("min", np.min)
     stats.register("max", np.max)
 
-    final_population, logbook = main(
+    final_population, logbook = evolution(
         toolbox,
         config,
         stats,
@@ -178,7 +201,7 @@ if __name__ == '__main__':
     env.visuals = True
     env.speed = "normal"
     env.multiplemode = "yes"
-    env.enemies = [2, 5, 7]
+    env.enemies = config["test_enemies"]
     np.random.seed(42)
 
     final_fitness, *_ = env.play(pcont=best_individual)
