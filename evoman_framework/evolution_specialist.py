@@ -132,6 +132,7 @@ def run_experiment(config: dict) -> None:
         enemies=config["train_enemy"],
         player_controller=nc,
         visuals=False,
+        level=2,
     )
 
     def evaluate(individual: list) -> tuple[float]:
@@ -148,6 +149,21 @@ def run_experiment(config: dict) -> None:
             pcont=individual  # pcont is actually the genome (bad naming)
         )
         return default_fitness,
+
+    def evaluate_gain(individual: list) -> tuple[float]:
+        """Function to get a gain score for a single individual.
+
+        Args:
+            individual (list): individual (list representation)
+
+        Returns:
+            tuple: the gain (player_energy - enemy_enegy) (as tuple with one value)
+        """
+        np.random.seed(42)
+        default_fitness, p_life, e_life, time = env.play(
+            pcont=individual  # pcont is actually the genome (bad naming)
+        )
+        return p_life-e_life,
 
     creator.create("FitnessMax", base.Fitness, weights=(1.0,))
     creator.create("Individual", list, fitness=creator.FitnessMax)
@@ -192,6 +208,7 @@ def run_experiment(config: dict) -> None:
     toolbox.register("select", tools.selTournament, tournsize=config["sel_tournament_size"])
     toolbox.register("replace", tools.selTournament, tournsize=config["rep_tournament_size"])
     toolbox.register("evaluate", evaluate)
+    toolbox.register("evaluate_gain", evaluate_gain)
 
     # defining statistics
     stats = tools.Statistics(key=lambda ind: ind.fitness.values)
@@ -226,9 +243,18 @@ def run_experiment(config: dict) -> None:
     final_population.sort(reverse=True, key=lambda x: x.fitness.values[0])
     best_individual = final_population[0]
 
-    # save best individual!
+    # save best individual (fitness)
     print("Saving best individual with fitness of={:.4f}".format(best_individual.fitness.values[0]))
-    with open(os.path.join(EXPERIMENT_NAME, 'best_individual.pkl'), 'wb') as i_file:
+    with open(os.path.join(EXPERIMENT_NAME, 'fittest_individual.pkl'), 'wb') as i_file:
+        pickle.dump(best_individual, i_file)
+    
+
+    gain = np.array(list(map(toolbox.evaluate_gain, final_population))).flatten()
+    index_max_gain = gain.argmax()
+    best_individual = final_population[index_max_gain]
+    # save best individual (gain)
+    print("Saving best individual with gain of={:.4f}, with gain={:.4f}".format(best_individual.fitness.values[0], gain[index_max_gain]))
+    with open(os.path.join(EXPERIMENT_NAME, 'best_gain_individual.pkl'), 'wb') as i_file:
         pickle.dump(best_individual, i_file)
 
     # replay the trained individual
@@ -244,7 +270,7 @@ def run_experiment(config: dict) -> None:
 
 if __name__ == '__main__':
 
-    for config_name in ["config_low_g.yaml", "config_high_g.yaml"]:
+    for config_name in ["config_low_g.yaml"]:#, "config_high_g.yaml"]:
         # Load the configuration from a YAML file
         with open(f"../{config_name}", "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
