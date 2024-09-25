@@ -79,7 +79,7 @@ def evolution(
 
         # Tournament selection (with elitism)
         elite = tools.selBest(pop, n_elites)
-        pop = toolbox.replace(pop + offspring, k=(mu-n_elites))
+        pop = toolbox.replace(pop + offspring, k=mu-n_elites)
         pop.extend(elite)
 
         # make sure population size stays constant
@@ -94,11 +94,16 @@ def evolution(
     return pop, logbook
 
 
-if __name__ == '__main__':
-    # Load the configuration from a YAML file
-    with open("../config.yaml", "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+def run_experiment(config: dict) -> None:
+    """Function to run an experiment given a config.
+    Takes care of creating output dir, etc.
 
+    Args:
+        config (dict): config containing run parameters
+
+    Returns:
+        None: -
+    """
     # create run directory
     EXPERIMENT_NAME = os.path.join("../experiments/", get_timed_name(prefix=config["name"]))
 
@@ -106,10 +111,15 @@ if __name__ == '__main__':
     if not os.path.exists(EXPERIMENT_NAME):
         os.makedirs(EXPERIMENT_NAME)
 
-    nc = NeuralController(n_inputs=config["n_inputs"], n_outputs=config["n_outputs"], hidden_size=config["hidden_size"])
+    nc = NeuralController(
+        n_inputs=config["n_inputs"],
+        n_outputs=config["n_outputs"],
+        hidden_size=config["hidden_size"]
+    )
+
     # add correct individual size to config
     config["individual_size"] = nc.get_genome_size()
- 
+
     env = Environment(
         experiment_name=EXPERIMENT_NAME,  # this is actually a path!
         multiplemode="no",
@@ -118,22 +128,33 @@ if __name__ == '__main__':
         visuals=False,
     )
 
-    # TODO: Do we keep this? (only log of time times 2)
-    # env.fitness_single = lambda: 0.9*(100 - env.get_enemylife()) + 0.1*env.get_playerlife() - np.log(env.get_time())*2
+    def evaluate(individual: list) -> tuple[float]:
+        """Function to get a fitness score for a single individual.
 
-    def evaluate(individual: list):
+        Args:
+            individual (list): individual (list representation)
+
+        Returns:
+            tuple: the fitness (as tuple with one value)
+        """
         np.random.seed(42)
         default_fitness, p_life, e_life, time = env.play(
-            pcont=individual
-        )  # pcont is actually the genome (bad naming)
-        return default_fitness,       
+            pcont=individual  # pcont is actually the genome (bad naming)
+        )
+        return default_fitness,
 
     creator.create("FitnessMax", base.Fitness, weights=(1.0,))
     creator.create("Individual", list, fitness=creator.FitnessMax)
 
     toolbox = base.Toolbox()
     # individual + initialization
-    toolbox.register("attribute", random.uniform, config["init_low"], config["init_up"])  # allow positive and negative values
+    toolbox.register(
+        "attribute",
+        random.uniform,
+        config["init_low"],  # lower bound
+        config["init_up"]  # upper bound
+    )
+
     toolbox.register(
         "individual",
         tools.initRepeat,
@@ -143,7 +164,9 @@ if __name__ == '__main__':
     )
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
-    # mating, mutation, selection (for mating and mutation), replacement selection and evaluation function
+    # mating, mutation, selection (for mating and mutation),
+    # replacement selection and evaluation function
+
     #toolbox.register("mate", tools.cxTwoPoint)
     toolbox.register(
         "mate",
@@ -206,3 +229,15 @@ if __name__ == '__main__':
 
     final_fitness, *_ = env.play(pcont=best_individual)
     print(f"final fitness: {final_fitness}")
+
+
+if __name__ == '__main__':
+
+    for config_name in ["config_low_g.yaml", "config_high_g.yaml"]:
+        # Load the configuration from a YAML file
+        with open(f"../{config_name}", "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+
+        for run in range(config["repeat"]):
+            config["name"] = f"{config['name']}_{run}"
+            run_experiment(config)
