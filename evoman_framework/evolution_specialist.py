@@ -10,6 +10,8 @@ from evoman.environment import Environment
 from neural_controller import NeuralController
 from naming import get_timed_name
 from plots import plot_stats
+from visualize import show_run
+from diversity_metrics import euclidean_distance, hamming_distance
 
 
 def evolution(
@@ -218,10 +220,18 @@ def run_experiment(config: dict) -> None:
     stats.register("min", np.min)
     stats.register("max", np.max)
 
+    diversity_stats = tools.Statistics(lambda ind: ind)  # ind is the genotype (a list of floats)
+
+    # Register custom statistics on the genotypes
+    diversity_stats.register("euclidean_avg", euclidean_distance)
+    diversity_stats.register("hamming", lambda genotypes: hamming_distance(genotypes, 0.5))
+
+    mstats = tools.MultiStatistics(fitness=stats, diversity=diversity_stats)
+
     final_population, logbook = evolution(
         toolbox,
         config,
-        stats,
+        mstats,
         tools.Logbook()
     )
 
@@ -253,24 +263,17 @@ def run_experiment(config: dict) -> None:
     index_max_gain = gain.argmax()
     best_individual = final_population[index_max_gain]
     # save best individual (gain)
-    print("Saving best individual with gain of={:.4f}, with gain={:.4f}".format(best_individual.fitness.values[0], gain[index_max_gain]))
+    print("Saving best individual with gain of={:.4f}, with gain={:.4f}".format(
+        best_individual.fitness.values[0],
+        gain[index_max_gain]
+    ))
     with open(os.path.join(EXPERIMENT_NAME, 'best_gain_individual.pkl'), 'wb') as i_file:
         pickle.dump(best_individual, i_file)
-
-    # replay the trained individual
-    #env.visuals = True
-    #env.speed = "normal"
-    #env.multiplemode = "yes"
-    #env.enemies = config["test_enemies"]
-    #np.random.seed(42)
-
-    #final_fitness, *_ = env.play(pcont=best_individual)
-    #print(f"final fitness: {final_fitness}")
 
 
 if __name__ == '__main__':
 
-    for config_name in ["config_low_g.yaml"]:#, "config_high_g.yaml"]:
+    for config_name in ["config_high_g_enemy=2.yaml", "config_high_g_enemy=5.yaml"]:#, "config_low_g.yaml"]:
         # Load the configuration from a YAML file
         with open(f"../{config_name}", "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
@@ -282,3 +285,8 @@ if __name__ == '__main__':
         for run in range(config["repeat"]):
             config["name"] = f"{EXPERIMENT_NAME}_{run}"
             run_experiment(config)
+
+        with open(os.path.join('../experiments', config["name"], "best_gain_individual.pkl"), mode="rb") as f_ind:
+            individual = pickle.load(f_ind)
+
+            show_run(individual=individual, enemies=[2, 5, 7], config=config)

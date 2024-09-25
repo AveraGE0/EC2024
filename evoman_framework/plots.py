@@ -10,7 +10,7 @@ import pickle
 
 def plot_stats(logs: Statistics, ylog=False) -> Figure:
     """ Plots the population's average (including std) and best fitness."""
-
+    logs = logs.chapters['fitness']
     generation = logs.select("gen")
     best_fitness = np.array(logs.select("max"))
     avg_fitness = np.array(logs.select("avg"))
@@ -53,70 +53,55 @@ def plot_stats(logs: Statistics, ylog=False) -> Figure:
     return fig
 
 
-def multirun_plots(experiment_logs: list, ylog=False):
+def multirun_plots(experiment_logs: dict[str, list], ylog=False):
     """ Plots the population's average (including std) and best fitness."""
+    plots = []
+    for name, logs in experiment_logs.items():
+        fig, ax = plt.subplots()
+        metrics = {"gen": np.array([]), "max": np.array([]), "avg": np.array([]), "std": np.array([])}
 
-    metrics = {"gen": np.array([]), "max": np.array([]), "avg": np.array([]), "std": np.array([])}
-
-    for log in experiment_logs:
+        for log in logs:
+            for metric in metrics.keys():
+                values = np.expand_dims(np.array(log.select(metric)), axis=0)
+                if metrics[metric].size == 0:
+                    metrics[metric] = values
+                else:
+                    metrics[metric] = np.concat([metrics[metric], values], axis = 0)
+        
+        # average over runs
         for metric in metrics.keys():
-            values = np.expand_dims(np.array(log.select(metric)), axis=0)
-            if metrics[metric].size == 0:
-                metrics[metric] = values
-            else:
-                metrics[metric] = np.concat([metrics[metric], values], axis = 0)
-    
-    # average over runs
-    for metric in metrics.keys():
-        metrics[metric] = np.mean(metrics[metric], axis=0)
+            metrics[metric] = np.mean(metrics[metric], axis=0)
+       
+        # Plot the data
+        ax.plot(metrics["gen"], metrics["avg"], 'b-', label=f"average {name}", markersize=8)
 
-    fig, ax = plt.subplots()
+        ax.plot(metrics["gen"], metrics["avg"] - metrics["std"], 'g-.', label=f"-1 sd {name}", markersize=8)
+        ax.plot(metrics["gen"], metrics["avg"] + metrics["std"], 'g-.', label=f"+1 sd {name}", markersize=8)
+        plt.fill_between(
+            metrics["gen"],
+            metrics["avg"] - metrics["std"],
+            metrics["avg"] + metrics["std"],
+            color='g',
+            alpha=0.2,
+            #label='Standard Deviation'
+        )
 
-    
-    
-    # Plot the data
-    ax.plot(metrics["gen"], metrics["avg"], 'b-', label="average", markersize=8)
+        ax.plot(metrics["gen"], metrics["max"], 'r-', label=f"{name} best", markersize=8)
 
-    ax.plot(metrics["gen"], metrics["avg"] - metrics["std"], 'g-.', label="-1 sd", markersize=8)
-    ax.plot(metrics["gen"], metrics["avg"] + metrics["std"], 'g-.', label="+1 sd", markersize=8)
-    plt.fill_between(
-        metrics["gen"],
-        metrics["avg"] - metrics["std"],
-        metrics["avg"] + metrics["std"],
-        color='g',
-        alpha=0.2,
-        #label='Standard Deviation'
-    )
+        # Customize the plot
+        ax.set_title(f"Population's Average and Best Fitness in Averaged over {len(experiment_logs)} Runs")
+        ax.set_xlabel("Generations")
+        ax.set_ylabel("Fitness")
+        ax.grid(True)
+        ax.legend(loc="best")
 
-    ax.plot(metrics["gen"], metrics["max"], 'r-', label="best", markersize=8)
+        if ylog:
+            ax.set_yscale('symlog')
 
-    # Customize the plot
-    ax.set_title(f"Population's Average and Best Fitness in Averaged over {len(experiment_logs)} Runs")
-    ax.set_xlabel("Generations")
-    ax.set_ylabel("Fitness")
-    ax.grid(True)
-    ax.legend(loc="best")
-
-    if ylog:
-        ax.set_yscale('symlog')
-
-    # Adjust the layout
-    fig.tight_layout()
-    return fig
-
-
-if __name__ == '__main__':
-    base_name = "test_final_low_g_25092024_155622"
-    experiment_path = "../experiments"
-    experiment_paths = [os.path.join(experiment_path, path) for path in os.listdir(experiment_path) if base_name in path]
-
-    logs = []
-    for experiment_path in experiment_paths:
-        with open(os.path.join(experiment_path, "logbook.pkl"), mode="rb") as log_file:
-            logs.append(pickle.load(log_file))
-
-    multirun_plots(logs)
-    plt.show()
+        # Adjust the layout
+        fig.tight_layout()
+        plots.append(fig)
+    return plots
 
 
 def plot_final(data, labels, algorithm_names, enemy_name):
@@ -191,22 +176,43 @@ def plot_final(data, labels, algorithm_names, enemy_name):
 
     plt.show()
 
-# Example Usage
-# Simulated data for 5 runs of two algorithms over 3 enemies
-data = [
-    np.random.normal(50, 10, 5),  # Algorithm 1 for Enemy 1
-    np.random.normal(55, 10, 5),  # Algorithm 2 for Enemy 1
-    np.random.normal(60, 10, 5),  # Algorithm 1 for Enemy 2
-    np.random.normal(62, 10, 5),  # Algorithm 2 for Enemy 2
-    np.random.normal(65, 10, 5),  # Algorithm 1 for Enemy 3
-    np.random.normal(63, 10, 5)   # Algorithm 2 for Enemy 3  
-]
-
-labels = ['enemy1', 'enemy1', 'enemy2', 'enemy2', 'enemy3', 'enemy3']
-algorithm_names = ['Large Population', 'Small Population']
-
-# Plot for one enemy (can be repeated for other enemies)
-plot_final(data, labels, algorithm_names, 'enemy1')
 
 
 
+if __name__ == '__main__':
+    base_names = {
+        "enemy2": "test_final_high_g_enemy=2_25092024_183036",
+        "enemy5": "test_final_high_g_enemy=5_25092024_182952"
+    }
+    
+    experiment_base_path = "../experiments"
+    
+    logs = {}
+
+    for name, base_name in base_names.items():
+        experiment_paths = [os.path.join(experiment_base_path, path) for path in os.listdir(experiment_base_path) if base_name in path]
+        logs[name] = []
+        for experiment_path in experiment_paths:
+            with open(os.path.join(experiment_path, "logbook.pkl"), mode="rb") as log_file:
+                logs[name].append(pickle.load(log_file))
+    # TODO: we need both algorithms per enemy!
+    figs = multirun_plots(logs)
+    for i, plot in enumerate(figs):
+        plot.savefig(os.path.join(experiment_base_path, f"test{i}.png"))
+    plt.show()
+    # Example Usage
+    # Simulated data for 5 runs of two algorithms over 3 enemies
+    data = [
+        np.random.normal(50, 10, 5),  # Algorithm 1 for Enemy 1
+        np.random.normal(55, 10, 5),  # Algorithm 2 for Enemy 1
+        np.random.normal(60, 10, 5),  # Algorithm 1 for Enemy 2
+        np.random.normal(62, 10, 5),  # Algorithm 2 for Enemy 2
+        np.random.normal(65, 10, 5),  # Algorithm 1 for Enemy 3
+        np.random.normal(63, 10, 5)   # Algorithm 2 for Enemy 3  
+    ]
+
+    labels = ['enemy1', 'enemy1', 'enemy2', 'enemy2', 'enemy3', 'enemy3']
+    algorithm_names = ['Large Population', 'Small Population']
+
+    # Plot for one enemy (can be repeated for other enemies)
+    plot_final(data, labels, algorithm_names, 'enemy1')

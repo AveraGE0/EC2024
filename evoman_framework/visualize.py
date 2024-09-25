@@ -1,74 +1,40 @@
 import graphviz
 import matplotlib.pyplot as plt
+from evoman.environment import Environment
+from neural_controller import NeuralController
+import numpy as np
+import os
 
 
-def draw_net(
-        config,
-        genome,
-        filename=None,
-        node_names=None,
-        show_disabled=True,
-        prune_unused=False,
-        node_colors=None,
-        fmt='svg'
-    ):
-    """ Receives a genome and draws a neural network with arbitrary topology. """
-    # If requested, use a copy of the genome which omits all components that won't affect the output.
-    if prune_unused:
-        genome = genome.get_pruned_copy(config.genome_config)
+def show_run(individual: list, enemies: list, config: dict):
+    nc = NeuralController(
+        n_inputs=config["n_inputs"],
+        n_outputs=config["n_outputs"],
+        hidden_size=config["hidden_size"]
+    )
 
-    if node_names is None:
-        node_names = {}
+    # add correct individual size to config
+    config["individual_size"] = nc.get_genome_size()
 
-    assert isinstance(node_names, dict)
+    EXPERIMENT_NAME ="../experiments/test"
 
-    if node_colors is None:
-        node_colors = {}
+    if not os.path.exists(EXPERIMENT_NAME):
+        os.makedirs(EXPERIMENT_NAME)
 
-    assert isinstance(node_colors, dict)
+    env = Environment(
+        experiment_name=EXPERIMENT_NAME,  # this is actually a path!
+        multiplemode="no",
+        visuals = True,
+        speed = "normal",
+        enemies=[enemies[0]],
+        player_controller=nc,
+        level=2,
+    )
+    np.random.seed(42)
 
-    node_attrs = {
-        'shape': 'circle',
-        'fontsize': '9',
-        'height': '0.2',
-        'width': '0.2'}
-
-    dot = graphviz.Digraph(name=filename, format=fmt, node_attr=node_attrs)
-
-    inputs = set()
-    for k in config.genome_config.input_keys:
-        inputs.add(k)
-        name = node_names.get(k, str(k))
-        input_attrs = {'style': 'filled', 'shape': 'box', 'fillcolor': node_colors.get(k, 'lightgray')}
-        dot.node(name, _attributes=input_attrs)
-
-    outputs = set()
-    for k in config.genome_config.output_keys:
-        outputs.add(k)
-        name = node_names.get(k, str(k))
-        node_attrs = {'style': 'filled', 'fillcolor': node_colors.get(k, 'lightblue')}
-
-        dot.node(name, _attributes=node_attrs)
-
-    used_nodes = set(genome.nodes.keys())
-    for n in used_nodes:
-        if n in inputs or n in outputs:
-            continue
-
-        attrs = {'style': 'filled',
-                 'fillcolor': node_colors.get(n, 'white')}
-        dot.node(str(n), _attributes=attrs)
-
-    for cg in genome.connections.values():
-        if cg.enabled or show_disabled:
-            # if cg.input not in used_nodes or cg.output not in used_nodes:
-            #    continue
-            inp, output = cg.key
-            a = node_names.get(inp, str(inp))
-            b = node_names.get(output, str(output))
-            style = 'solid' if cg.enabled else 'dotted'
-            color = 'green' if cg.weight > 0 else 'red'
-            width = str(0.1 + abs(cg.weight / 5.0))
-            dot.edge(a, b, _attributes={'style': style, 'color': color, 'penwidth': width})
-
-    return dot
+    for enemy in enemies:
+        env.enemies = [enemy]
+        final_fitness, p_energy, e_energy, _ = env.play(pcont=individual)
+        print(f"Enemy {enemy}")
+        print(f"final fitness: {final_fitness}")
+        print(f"final_gain: {p_energy - e_energy}")
