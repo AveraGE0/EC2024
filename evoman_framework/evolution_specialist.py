@@ -223,8 +223,13 @@ def run_experiment(config: dict) -> None:
     fig.savefig(os.path.join(EXPERIMENT_NAME, "stats.png"), format="png")
 
     # get best individual (sort descending!)
-    final_population.sort(reverse=True, key=lambda x: x.fitness.values)
+    final_population.sort(reverse=True, key=lambda x: x.fitness.values[0])
     best_individual = final_population[0]
+
+    # save best individual!
+    print("Saving best individual with fitness of={:.4f}".format(best_individual.fitness.values[0]))
+    with open(os.path.join(EXPERIMENT_NAME, 'best_individual.pkl'), 'wb') as i_file:
+        pickle.dump(best_individual, i_file)
 
     # replay the trained individual
     #env.visuals = True
