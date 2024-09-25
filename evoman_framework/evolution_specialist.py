@@ -104,8 +104,14 @@ def run_experiment(config: dict) -> None:
     Returns:
         None: -
     """
+    # cleanup toolbox
+    if "FitnessMax" in creator.__dict__:
+        del creator.FitnessMax
+    if "Individual" in creator.__dict__:
+        del creator.Individual
+
     # create run directory
-    EXPERIMENT_NAME = os.path.join("../experiments/", get_timed_name(prefix=config["name"]))
+    EXPERIMENT_NAME = os.path.join("../experiments/", config["name"])
 
     # initialize directories for running the experiment
     if not os.path.exists(EXPERIMENT_NAME):
@@ -221,14 +227,14 @@ def run_experiment(config: dict) -> None:
     best_individual = final_population[0]
 
     # replay the trained individual
-    env.visuals = True
-    env.speed = "normal"
-    env.multiplemode = "yes"
-    env.enemies = config["test_enemies"]
-    np.random.seed(42)
+    #env.visuals = True
+    #env.speed = "normal"
+    #env.multiplemode = "yes"
+    #env.enemies = config["test_enemies"]
+    #np.random.seed(42)
 
-    final_fitness, *_ = env.play(pcont=best_individual)
-    print(f"final fitness: {final_fitness}")
+    #final_fitness, *_ = env.play(pcont=best_individual)
+    #print(f"final fitness: {final_fitness}")
 
 
 if __name__ == '__main__':
@@ -238,6 +244,10 @@ if __name__ == '__main__':
         with open(f"../{config_name}", "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
+        # get same postfix for all runs
+        EXPERIMENT_NAME = get_timed_name(prefix=config['name'])
+
+        # run experiments
         for run in range(config["repeat"]):
-            config["name"] = f"{config['name']}_{run}"
+            config["name"] = f"{EXPERIMENT_NAME}_{run}"
             run_experiment(config)
