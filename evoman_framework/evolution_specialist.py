@@ -11,7 +11,8 @@ from neural_controller import NeuralController
 from naming import get_timed_name
 from plots import plot_stats
 from visualize import show_run
-from diversity_metrics import euclidean_distance, hamming_distance
+from diversity_metrics import euclidean_distance, hamming_distance, fitness_sharing
+
 
 
 def evolution(
@@ -206,9 +207,10 @@ def run_experiment(config: dict) -> None:
         up=config["polynomial_up"],
         indpb=config["polynomial_indpb"]
     )
+    
 
     toolbox.register("select", tools.selTournament, tournsize=config["sel_tournament_size"])
-    toolbox.register("replace", tools.selTournament, tournsize=config["rep_tournament_size"])
+    toolbox.register("replace", fitness_sharing, tournsize=config["rep_tournament_size"], sigma=30)
     toolbox.register("evaluate", evaluate)
     toolbox.register("evaluate_gain", evaluate_gain)
 
