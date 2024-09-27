@@ -273,7 +273,14 @@ def run_experiment(config: dict) -> None:
 
 if __name__ == '__main__':
 
-    for config_name in ["config_high_g_enemy=2.yaml", "config_high_g_enemy=5.yaml"]:#, "config_low_g.yaml"]:
+    for config_name in [
+        "config_high_g_enemy=2.yaml",
+        "config_high_g_enemy=5.yaml",
+        "config_high_g_enemy=7.yaml",
+        "config_low_g_enemy=2.yaml",
+        "config_low_g_enemy=5.yaml",
+        "config_low_g_enemy=7.yaml",
+    ]:
         # Load the configuration from a YAML file
         with open(f"../{config_name}", "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
@@ -285,7 +292,7 @@ if __name__ == '__main__':
         for run in range(config["repeat"]):
             config["name"] = f"{EXPERIMENT_NAME}_{run}"
             run_experiment(config)
-
+        
         with open(os.path.join('../experiments', config["name"], "best_gain_individual.pkl"), mode="rb") as f_ind:
             individual = pickle.load(f_ind)
 
