@@ -1,0 +1,35 @@
+# general
+name: "low_g_enemy=7"
+population_size: 200
+generations: 10
+
+# Neural Network
+n_inputs: 20
+hidden_size: 5
+n_outputs: 5
+init_low: -1
+init_up: 1
+
+# crossover
+p_crossover: 1.0
+SBX_eta: 5.0
+
+# mutation
+p_mutation: 0.2
+
+polynomial_eta: 10.0
+polynomial_low: -10.0
+polynomial_up: 10.0
+polynomial_indpb: 0.1
+
+# offspring selection
+sel_tournament_size: 3
+
+# replacement selection
+rep_tournament_size: 2
+elitism_size: 2  # 0 to turn off
+
+# environment specific
+train_enemy: [7]
+test_enemies: [2, 5, 7]
+repeat: 10

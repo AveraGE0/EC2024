@@ -1,5 +1,5 @@
 # general
-name: "test_final_low_g"
+name: "low_g_enemy=5"
 population_size: 200
 generations: 10
 
@@ -30,6 +30,6 @@ rep_tournament_size: 2
 elitism_size: 2  # 0 to turn off
 
 # environment specific
-train_enemy: [2]
+train_enemy: [5]
 test_enemies: [2, 5, 7]
-repeat: 1
+repeat: 10
