@@ -6,6 +6,9 @@ import numpy as np
 from deap.tools import Statistics
 from scipy.stats import ttest_ind
 import pickle
+from gain import get_gain_values
+from neural_controller import NeuralController
+from evoman.environment import Environment
 
 
 def plot_stats(logs: Statistics, ylog=False) -> Figure:
@@ -167,7 +170,7 @@ def multirun_plots_diversity(experiment_logs: dict[str, list], colors: list, ylo
     return fig
 
 
-def plot_final(data, labels, algorithm_names, enemy_name):
+def plot_final(data, labels, algorithm_names):
     """
     Plots box plots comparing two algorithms per enemy and performs a t-test.
     
@@ -182,13 +185,6 @@ def plot_final(data, labels, algorithm_names, enemy_name):
     - Box plot comparing the performance of two algorithms for the given enemy.
     - Prints the p-value from the t-test.
     """
-    # Split data into two groups for the algorithms
-    #alg1_data = [x for i, x in enumerate(data) if labels[i] == enemy_name and i % 2 == 0]
-    #alg2_data = [x for i, x in enumerate(data) if labels[i] == enemy_name and i % 2 == 1]
-    
-    # Combine data for boxplot
-    #combined_data = [alg1_data, alg2_data]
-
     # Getting the right positions
     positions = [1, 2, 4, 5, 7, 8]
 
@@ -200,15 +196,15 @@ def plot_final(data, labels, algorithm_names, enemy_name):
 
     # Find the maximum y value in the data
     y_max = max([max(d) for d in data])  
-    text_y_pos = y_max + 5 
+    text_y_pos = y_max + 10
 
-    plt.figure(figsize=(8, text_y_pos+2))
+    plt.figure()#figsize=(8, text_y_pos+2))
     
     # Create box plot
     box = plt.boxplot(data, positions=positions, widths=0.9, patch_artist=True)
-    plt.title(f'Comparison of Performance on Different Enemies with Large and Small Population Size')
-    plt.ylabel('Performance')
-    plt.xticks([1.5, 4.5, 7.5], ['Enemy 1', 'Enemy 2', 'Enemy 3'])
+    plt.title(f'Gain on Different Enemies for two Configurations')
+    plt.ylabel('Gain')
+    plt.xticks([1.5, 4.5, 7.5], labels)
 
     # Define color schemes
     color_scheme_1 = 'wheat'
@@ -236,8 +232,9 @@ def plot_final(data, labels, algorithm_names, enemy_name):
     # Printing the t-stat and p-value
     for i, j in zip(range(len(t_stat)), [1.5, 4.5, 7.5]):
         plt.text(j, text_y_pos, f't-stat: {t_stat[i]}\n p-value: {p_value[i]}', ha='center')
-
-    plt.show()
+    plt.tight_layout()
+    plt.savefig("../experiments/boxplot.png")
+    #plt.show()
 
 
 
@@ -291,20 +288,52 @@ if __name__ == '__main__':
             colors,
         )
         fig.savefig(os.path.join(experiment_base_path, f"{enemy}_diversity.png"))
-    #plt.show()
-    # Example Usage
+
+    # GAIN BOXPLOT
+    EXPERIMENT_NAME = "../experiments/test"
+
+    # initialize directories for running the experiment
+    if not os.path.exists(EXPERIMENT_NAME):
+        os.makedirs(EXPERIMENT_NAME)
+
+    config = {}
+    config["n_inputs"] = 20
+    n_outputs=config["n_outputs"] = 5
+    hidden_size=config["hidden_size"] = 5
+
+    nc = NeuralController(
+        n_inputs=config["n_inputs"],
+        n_outputs=config["n_outputs"],
+        hidden_size=config["hidden_size"]
+    )
+    # add correct individual size to config
+    config["individual_size"] = nc.get_genome_size()
+
+    env = Environment(
+        experiment_name=EXPERIMENT_NAME,  # this is actually a path!
+        multiplemode="no",
+        enemies=[2],
+        player_controller=nc,
+        visuals=False,
+        level=2,
+    )
+        
+    experiment_base_path = "../experiments"
+    
+    gains = get_gain_values(env, base_names, experiment_base_path, repeat=5)
+    #print(gains)
     # Simulated data for 5 runs of two algorithms over 3 enemies
     data = [
-        np.random.normal(50, 10, 5),  # Algorithm 1 for Enemy 1
-        np.random.normal(55, 10, 5),  # Algorithm 2 for Enemy 1
-        np.random.normal(60, 10, 5),  # Algorithm 1 for Enemy 2
-        np.random.normal(62, 10, 5),  # Algorithm 2 for Enemy 2
-        np.random.normal(65, 10, 5),  # Algorithm 1 for Enemy 3
-        np.random.normal(63, 10, 5)   # Algorithm 2 for Enemy 3  
+        gains["lphg"]["enemy2"],  # Algorithm 1 for Enemy 1
+        gains["hplg"]["enemy2"],  # Algorithm 2 for Enemy 1
+        gains["lphg"]["enemy5"],  # Algorithm 1 for Enemy 2
+        gains["hplg"]["enemy5"],  # Algorithm 2 for Enemy 2
+        gains["lphg"]["enemy7"],  # Algorithm 1 for Enemy 3
+        gains["hplg"]["enemy7"]   # Algorithm 2 for Enemy 3  
     ]
 
-    labels = ['enemy1', 'enemy1', 'enemy2', 'enemy2', 'enemy3', 'enemy3']
-    algorithm_names = ['Large Population', 'Small Population']
+    labels = ['Enemy=2', 'Enemy=5', 'Enemy=7']
+    algorithm_names = ['Small Population', 'Large Population']
 
     # Plot for one enemy (can be repeated for other enemies)
-    plot_final(data, labels, algorithm_names, 'enemy1')
+    plot_final(data, labels, algorithm_names)

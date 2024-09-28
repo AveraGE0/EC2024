@@ -210,7 +210,7 @@ def run_experiment(config: dict) -> None:
     
 
     toolbox.register("select", tools.selTournament, tournsize=config["sel_tournament_size"])
-    toolbox.register("replace", fitness_sharing, tournsize=config["rep_tournament_size"], sigma=30)
+    toolbox.register("replace", fitness_sharing, tournsize=config["rep_tournament_size"], sigma=10)
     toolbox.register("evaluate", evaluate)
     toolbox.register("evaluate_gain", evaluate_gain)
 
@@ -251,6 +251,9 @@ def run_experiment(config: dict) -> None:
     fig = plot_stats(logbook)
     fig.savefig(os.path.join(EXPERIMENT_NAME, "stats.png"), format="png")
 
+    # save final population
+    with open(os.path.join(EXPERIMENT_NAME, 'final_population.pkl'), 'wb') as p_file:
+        pickle.dump(final_population, p_file)
     # get best individual (sort descending!)
     final_population.sort(reverse=True, key=lambda x: x.fitness.values[0])
     best_individual = final_population[0]

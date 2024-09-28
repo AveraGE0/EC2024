@@ -1,20 +1,14 @@
 import os
-import random
 import pickle
-import yaml
 import numpy as np
-from tqdm import tqdm
-from deap import base, creator, tools
 from evoman.environment import Environment
 from neural_controller import NeuralController
-from naming import get_timed_name
-from plots import plot_stats
-from visualize import show_run
 
 
-def get_gain(env, individuals: list, n_runs=5) -> list:
+def get_gain(env, enemy: int, individuals: list, n_runs=5) -> list:
     np.random.seed(42)
 
+    env.enemies = [enemy]
     gain = np.zeros(shape=(len(individuals), n_runs))
     for i_ind, individual in enumerate(individuals):
         for run in range(n_runs):
@@ -37,7 +31,7 @@ def get_gain_values(env, algorithms: dict, experiment_base_path: str, repeat=5):
             for experiment_path in experiment_paths:
                 with open(os.path.join(experiment_path, "best_gain_individual.pkl"), mode="rb") as individual_file:
                     individuals.append(pickle.load(individual_file))
-            gains[alg_name][enemy] = get_gain(env, individuals, n_runs=repeat)
+            gains[alg_name][enemy] = get_gain(env, enemy=int(enemy[-1]), individuals=individuals, n_runs=repeat)
     return gains
     
 
