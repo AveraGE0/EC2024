@@ -41,7 +41,7 @@ def plot_stats(logs: Statistics, ylog=False) -> Figure:
     ax.set_title("Population's Mean and Maximum Over Ten Runs")
     ax.set_xlabel("Generations")
     ax.set_ylabel("Fitness")
-    ax.grid(False)
+    ax.grid(True)
     ax.legend(loc="best")
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -194,17 +194,14 @@ def plot_final(data, labels, algorithm_names):
         t_stat.append(round(ttest_ind(data[i], data[i+1])[0], 4))
         p_value.append(round(ttest_ind(data[i], data[i+1])[1], 4))
 
-    # Find the maximum y value in the data
-    y_max = max([max(d) for d in data])  
-    text_y_pos = y_max + 10
-
     plt.figure()#figsize=(8, text_y_pos+2))
     
     # Create box plot
     box = plt.boxplot(data, positions=positions, widths=0.9, patch_artist=True)
-    plt.title(f'Gain on Different Enemies for two Configurations')
+    plt.title(f'Gain on Different Enemies for Two Configurations')
     plt.ylabel('Gain')
     plt.xticks([1.5, 4.5, 7.5], labels)
+    plt.grid(True)
 
     # Define color schemes
     color_scheme_1 = 'wheat'
@@ -231,7 +228,7 @@ def plot_final(data, labels, algorithm_names):
 
     # Printing the t-stat and p-value
     for i, j in zip(range(len(t_stat)), [1.5, 4.5, 7.5]):
-        plt.text(j, text_y_pos, f't-stat: {t_stat[i]}\n p-value: {p_value[i]}', ha='center')
+        plt.text(j, -10, f't-stat: {t_stat[i]}\n p-value: {p_value[i]}', ha='center', va='top')
     plt.tight_layout()
     plt.savefig("../experiments/boxplot.png")
     #plt.show()
@@ -253,8 +250,8 @@ if __name__ == '__main__':
         }
     }
     colors = [
-        {"max": "green", "avg": "blue", "std": "blue", "euclidean": "lightblue", "hamming": "green"},
-        {"max": "orange", "avg": "red", "std": "red", "euclidean": "purple", "hamming": "orange"}
+        {"max": "#B8860B", "avg": "#5F9EA0", "std": "#5F9EA0", "euclidean": "#F5DEB3", "hamming": "#2F4F4F"},  # wheat and cadetblue for the first configuration
+        {"max": "#FFA500", "avg": "#FF4500", "std": "#FF4500", "euclidean": "#800080", "hamming": "#FFA500"}   # orange and red for the second configuration
     ]
     experiment_base_path = "../experiments"
     
@@ -332,7 +329,7 @@ if __name__ == '__main__':
         gains["hplg"]["enemy7"]   # Algorithm 2 for Enemy 3  
     ]
 
-    labels = ['Enemy=2', 'Enemy=5', 'Enemy=7']
+    labels = ['Enemy2', 'Enemy5', 'Enemy7']
     algorithm_names = ['Small Population', 'Large Population']
 
     # Plot for one enemy (can be repeated for other enemies)
