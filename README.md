@@ -11,5 +11,7 @@ pip install -r requirements.txt
 Go into the ***evoman_framework/*** directory (`cd evoman_framework`) $\rightarrow$ 
 
 ```python 
-python3 controller_specialist_demo.py
+python3 evolution_specialist.py
 ```
+
+Plots can only be generated with the data of runs which is not included in the github project!
