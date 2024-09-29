@@ -1,6 +1,9 @@
 experiments/*
 !experiments/.gitkeep
 
+summary_plots/*
+!summary_plots/.gitkeep
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

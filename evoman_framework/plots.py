@@ -56,7 +56,7 @@ def plot_stats(logs: Statistics, ylog=False) -> Figure:
     return fig
 
 
-def multirun_plots(experiment_logs: dict[str, list], colors: list, ylog=False):
+def multirun_plots(ax, experiment_logs: dict[str, list], colors: list, ylog=False):
     """ Plots the population's average (including std) and best fitness.
 
     Args:
@@ -66,7 +66,6 @@ def multirun_plots(experiment_logs: dict[str, list], colors: list, ylog=False):
     Returns:
         _type_: _description_
     """
-    fig, ax = plt.subplots()
     for (name, logs), palette in zip(experiment_logs.items(), colors):
         metrics = {"gen": np.array([]), "max": np.array([]), "avg": np.array([]), "std": np.array([])}
 
@@ -85,11 +84,11 @@ def multirun_plots(experiment_logs: dict[str, list], colors: list, ylog=False):
             metrics[metric] = np.mean(metrics[metric], axis=0)
        
         # Plot the data
-        ax.plot(metrics["gen"], metrics["avg"], "-", color=f'{palette["avg"]}', label=f"average {name}", markersize=8)
+        ax.plot(metrics["gen"], metrics["avg"], "-", color=f'{palette["avg"]}', label=f"Average {name}", markersize=8)
 
         #ax.plot(metrics["gen"], metrics["avg"] - metrics["std"], 'g-.', label=f"-1 sd {name}", markersize=8)
         #ax.plot(metrics["gen"], metrics["avg"] + metrics["std"], 'g-.', label=f"+1 sd {name}", markersize=8)
-        plt.fill_between(
+        ax.fill_between(
             metrics["gen"],
             metrics["avg"] - metrics["std"],
             metrics["avg"] + metrics["std"],
@@ -98,10 +97,10 @@ def multirun_plots(experiment_logs: dict[str, list], colors: list, ylog=False):
             #label='Standard Deviation'
         )
 
-        ax.plot(metrics["gen"], metrics["max"], "-", color=f'{palette["max"]}', label=f"{name} best", markersize=8)
+        ax.plot(metrics["gen"], metrics["max"], "-", color=f'{palette["max"]}', label=f"Best {name}", markersize=8)
 
     # Customize the plot
-    ax.set_title(f"Population's Average and Best Fitness in Averaged over {runs} Runs")
+    ax.set_title(f"Population's Average and Best Fitness Averaged Over {runs} Runs")
     ax.set_xlabel("Generations")
     ax.set_ylabel("Fitness")
     ax.grid(True)
@@ -110,12 +109,10 @@ def multirun_plots(experiment_logs: dict[str, list], colors: list, ylog=False):
     if ylog:
         ax.set_yscale('symlog')
 
-    # Adjust the layout
-    fig.tight_layout()
-    return fig
+    return ax
 
 
-def multirun_plots_diversity(experiment_logs: dict[str, list], colors: list, ylog=False):
+def multirun_plots_diversity(ax, experiment_logs: dict[str, list], colors: list, ylog=False):
     """ Plots the population's average (including std) and best fitness.
 
     Args:
@@ -125,7 +122,6 @@ def multirun_plots_diversity(experiment_logs: dict[str, list], colors: list, ylo
     Returns:
         _type_: _description_
     """
-    fig, ax = plt.subplots()
     for (name, logs), palette in zip(experiment_logs.items(), colors):
         metrics = {"gen": np.array([]), "std": np.array([]), "euclidean_avg": np.array([]), "hamming": np.array([])}
 
@@ -149,13 +145,13 @@ def multirun_plots_diversity(experiment_logs: dict[str, list], colors: list, ylo
             metrics[metric] = np.mean(metrics[metric], axis=0)
        
         # Plot the data
-        ax.plot(metrics["gen"], metrics["euclidean_avg"], "-", color=f'{palette["euclidean"]}', label=f"average euclidean {name}", markersize=8)
-        ax.plot(metrics["gen"], metrics["hamming"], "-", color=f'{palette["hamming"]}', label=f"average hamming {name}", markersize=8)
-        ax.plot(metrics["gen"], metrics["std"], "-", color=f'{palette["std"]}', label=f"fitness std {name}", markersize=8)
+        ax.plot(metrics["gen"], metrics["euclidean_avg"], "-", color=f'{palette["euclidean"]}', label=f"Average Euclidean {name}", markersize=8)
+        ax.plot(metrics["gen"], metrics["hamming"], "-", color=f'{palette["hamming"]}', label=f"Average Hamming {name}", markersize=8)
+        ax.plot(metrics["gen"], metrics["std"], "-", color=f'{palette["std"]}', label=f"Fitness STD {name}", markersize=8)
         #plt.show()
         #pass
     # Customize the plot
-    ax.set_title(f"Population's Genome and Phenome Diversity over {runs} Runs for {enemy}")
+    ax.set_title(f"Population's Diversity Over {runs} Runs for Enemy {enemy[-1]}")
     ax.set_xlabel("Generations")
     ax.set_ylabel("Distance")
     ax.grid(True)
@@ -164,10 +160,7 @@ def multirun_plots_diversity(experiment_logs: dict[str, list], colors: list, ylo
     #plt.show()
     if ylog:
         ax.set_yscale('symlog')
-
-    # Adjust the layout
-    fig.tight_layout()
-    return fig
+    return ax
 
 
 def plot_final(data, labels, algorithm_names):
@@ -194,7 +187,7 @@ def plot_final(data, labels, algorithm_names):
         t_stat.append(round(ttest_ind(data[i], data[i+1])[0], 4))
         p_value.append(round(ttest_ind(data[i], data[i+1])[1], 4))
 
-    plt.figure()#figsize=(8, text_y_pos+2))
+    plt.figure(figsize=(8, 4))
     
     # Create box plot
     box = plt.boxplot(data, positions=positions, widths=0.9, patch_artist=True)
@@ -228,25 +221,37 @@ def plot_final(data, labels, algorithm_names):
 
     # Printing the t-stat and p-value
     for i, j in zip(range(len(t_stat)), [1.5, 4.5, 7.5]):
-        plt.text(j, -10, f't-stat: {t_stat[i]}\n p-value: {p_value[i]}', ha='center', va='top')
+        plt.text(j, 45, f't-stat: {t_stat[i]}\n p-value: {p_value[i]}', ha='center', va='top')
     plt.tight_layout()
-    plt.savefig("../experiments/boxplot.png")
+    plt.savefig("../summary_plots/boxplot.png")
     #plt.show()
 
 
 
 
 if __name__ == '__main__':
+    # base_names = {
+    #     "lphg": {   
+    #         "enemy2": "high_g_enemy=2_25092024_210118",
+    #         "enemy5": "high_g_enemy=5_25092024_211033",
+    #         "enemy7": "high_g_enemy=7_25092024_212353"
+    #     },
+    #     "hplg": {
+    #         "enemy2": "low_g_enemy=2_25092024_213352",
+    #         "enemy5": "low_g_enemy=5_25092024_214406",
+    #         "enemy7": "low_g_enemy=7_25092024_220135"
+    #     }
+    # }
     base_names = {
         "lphg": {   
-            "enemy2": "high_g_enemy=2_25092024_210118",
-            "enemy5": "high_g_enemy=5_25092024_211033",
-            "enemy7": "high_g_enemy=7_25092024_212353"
+            "enemy2": "high_g_enemy=2_27092024_170302",
+            "enemy5": "high_g_enemy=5_27092024_172657",
+            "enemy7": "high_g_enemy=7_27092024_180456"
         },
         "hplg": {
-            "enemy2": "low_g_enemy=2_25092024_213352",
-            "enemy5": "low_g_enemy=5_25092024_214406",
-            "enemy7": "low_g_enemy=7_25092024_220135"
+            "enemy2": "low_g_enemy=2_27092024_183050",
+            "enemy5": "low_g_enemy=5_27092024_185837",
+            "enemy7": "low_g_enemy=7_27092024_194355"
         }
     }
     colors = [
@@ -254,6 +259,7 @@ if __name__ == '__main__':
         {"max": "#FFA500", "avg": "#FF4500", "std": "#FF4500", "euclidean": "#800080", "hamming": "#FFA500"}   # orange and red for the second configuration
     ]
     experiment_base_path = "../experiments"
+    plots_path = "../summary_plots"
     
     # replace each base name with all logs of the run with that basename
     logs = {}
@@ -269,22 +275,54 @@ if __name__ == '__main__':
                 with open(os.path.join(experiment_path, "logbook.pkl"), mode="rb") as log_file:
                     logs[name][enemy].append(pickle.load(log_file))
     # TODO: we need both algorithms per enemy!
+    
+    
     for enemy in base_names["lphg"].keys():
-        fig = multirun_plots({
-                "lphg":logs["lphg"][enemy],
-                "hplg": logs["hplg"][enemy],
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 6))#, gridspec_kw={'wspace': 0})
+        fig.suptitle(f'Enemy {enemy[-1]}', fontsize=16)
+        ax_fit = multirun_plots(
+            ax1,{
+                "LPHG":logs["lphg"][enemy],
+                "HPLG": logs["hplg"][enemy],
             },
             colors
         )
-        fig.savefig(os.path.join(experiment_base_path, f"{enemy}_fitness.png"))
+        #fig.savefig(os.path.join(plots_path, f"{enemy}_fitness.png"))
 
-        fig = multirun_plots_diversity({
-                "lphg":logs["lphg"][enemy],
-                "hplg": logs["hplg"][enemy],
+        ax_div = multirun_plots_diversity(
+            ax2,{
+                "LPHG": logs["lphg"][enemy],
+                "HPLG": logs["hplg"][enemy],
             },
             colors,
         )
-        fig.savefig(os.path.join(experiment_base_path, f"{enemy}_diversity.png"))
+        ax_div.yaxis.set_ticks_position('right')
+        ax_div.yaxis.set_label_position('right')
+        #fig.savefig(os.path.join(plots_path, f"{enemy}_diversity.png"))
+
+        # Remove the left y-axis from the right plot
+        #ax2.spines['left'].set_visible(False)
+          # Move the label to the right
+        # Optionally, add legends
+        ax_fit.legend(loc='center right', bbox_to_anchor=(1.0, 0.55))
+        ax_div.legend(loc='center right')
+
+        ax_fit.set_title("Population's Average and Best\nFitness Averaged Over 10 Runs", fontsize=14)
+        ax_div.set_title("Population's Diversity Averaged\nOver 10 Runs", fontsize=14)
+        
+        fig.text(0.5, -0.04, 'Generations', ha='center', va='center')
+        #ax1.grid(True)
+        #ax2.grid(True)
+        ax_div.yaxis.label.set_fontsize(14)
+        ax_fit.yaxis.label.set_fontsize(14)
+        # Adjust layout to minimize gaps
+        plt.subplots_adjust(wspace=0)
+
+        # Adjust layout
+        fig.tight_layout()
+
+        # Show the combined figure
+        fig.savefig(os.path.join(plots_path, f"{enemy}_fitness_diversity.png"))
 
     # GAIN BOXPLOT
     EXPERIMENT_NAME = "../experiments/test"
@@ -330,7 +368,7 @@ if __name__ == '__main__':
     ]
 
     labels = ['Enemy2', 'Enemy5', 'Enemy7']
-    algorithm_names = ['Small Population', 'Large Population']
+    algorithm_names = ['Gain LPHG', 'Gain HPLG']
 
     # Plot for one enemy (can be repeated for other enemies)
     plot_final(data, labels, algorithm_names)
