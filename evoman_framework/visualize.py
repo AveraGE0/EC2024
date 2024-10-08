@@ -1,12 +1,29 @@
-import graphviz
-import matplotlib.pyplot as plt
+"""Small script for visualizing an individuals (NN) behavior with Evoman."""
+import os
+import pickle
+import yaml
+import numpy as np
 from evoman.environment import Environment
 from neural_controller import NeuralController
-import numpy as np
-import os
 
 
-def show_run(individual: list, enemies: list, config: dict):
+def show_run(individual: list, enemies: list, config: dict, speed="fastest"):
+    """Function to show a run of a specific individual given a config (the config it was
+    trained on).
+
+    Args:
+        individual (list): Individual (NN weights) that is simulated.
+        enemies (list): Enemies that should be played against.
+        config (dict): Configuration of the run.
+        speed (str, optional): Simulation speed. Should be "normal" or "fastest".
+                               Defaults to "fastest".
+    """
+    if speed not in ["fastest", "normal"]:
+        raise ValueError(
+            "Got wrong speed setting, should be 'fastest' or 'normal'"\
+            f"but was: {speed}!"
+        )
+
     nc = NeuralController(
         n_inputs=config["n_inputs"],
         n_outputs=config["n_outputs"],
@@ -15,26 +32,51 @@ def show_run(individual: list, enemies: list, config: dict):
 
     # add correct individual size to config
     config["individual_size"] = nc.get_genome_size()
+    # dummy directory
+    experiment_name ="../experiments/test"
 
-    EXPERIMENT_NAME ="../experiments/test"
-
-    if not os.path.exists(EXPERIMENT_NAME):
-        os.makedirs(EXPERIMENT_NAME)
+    if not os.path.exists(experiment_name):
+        os.makedirs(experiment_name)
 
     env = Environment(
-        experiment_name=EXPERIMENT_NAME,  # this is actually a path!
+        experiment_name=experiment_name,
         multiplemode="no",
-        visuals = True,
-        speed = "normal",
+        visuals=True,
+        speed=speed,
         enemies=[enemies[0]],
         player_controller=nc,
         level=2,
     )
+
     np.random.seed(42)
+
+    won = 0
+    total_gain = 0
+    total_fitness = 0
 
     for enemy in enemies:
         env.enemies = [enemy]
         final_fitness, p_energy, e_energy, _ = env.play(pcont=individual)
-        print(f"Enemy {enemy}")
-        print(f"final fitness: {final_fitness}")
-        print(f"final_gain: {p_energy - e_energy}")
+
+        total_fitness += final_fitness
+        total_gain = total_gain + p_energy - e_energy
+        won += int(e_energy == 0)
+
+        print(
+            f"Enemy {enemy}: fitness: {final_fitness},\t gain: {p_energy - e_energy},"\
+            f"\t defeated: {'yes' if e_energy == 0 else 'no'}"
+        )
+    print(f"Total won: {won}, total gain: {total_gain}, avg fitness: {total_fitness/8}")
+
+
+if __name__ == '__main__':
+    np.set_printoptions(precision=3)
+    RUN_DIR = "..\\experiments\\competition_test\\"
+
+    with open(os.path.join(RUN_DIR, "fittest_individual.pkl"), mode="rb") as ind_file:
+        ind = pickle.load(ind_file)
+
+    with open(os.path.join(RUN_DIR, "config.yaml"), mode="r", encoding="utf-8") as config_file:
+        ind_config = yaml.safe_load(config_file)
+
+    show_run(ind, list(range(1, 9)), ind_config, speed="normal")
