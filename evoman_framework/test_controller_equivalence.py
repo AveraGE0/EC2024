@@ -26,5 +26,3 @@ def test_controller_equivalence():
         org_result = org_controller.control(np.array(inputs), None)
 
         assert (nc_result == org_result), f"Results where not equal: {nc_result}!={org_result}"
-
-    

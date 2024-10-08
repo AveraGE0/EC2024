@@ -1,0 +1,38 @@
+"""Module for setting values on individuals."""
+import numpy as np
+from fitness_weighting import FitnessWeighting
+from competition_metrics import multi_gain, defeated_enemies
+
+
+def set_fitness(
+    individuals: list[list],
+    scheduled_weights: FitnessWeighting
+) -> None:
+    """Function to set the fitness (weighted!) on all individuals,
+    given the population and the fitness weight scaler.
+
+    Args:
+        individuals (list[list]): Population of individuals.
+        scheduled_weights (FitnessWeighting): Fitness weighting object.
+    """
+    for ind in individuals:
+        ind.fitness.values = (scheduled_weights.get_weighted_fitness(ind.fitnesses),)
+
+
+def set_individual_properties(ind, metrics: dict[str, np.ndarray]) -> None:
+    """Sets the properties of an individual given the metrics of a simulation
+    run. The metrics are arrays of fitness, player life, enemy life, time,
+    where each array contains one value for each enemy simulated.
+    The fitness itself is not set since it might change over time.
+
+    Args:
+        ind (_type_): Individual.
+        metrics (dict): Metrics dictionary (fitness, player_life, enemy_life, time).
+        scheduled_weights (FitnessWeighting): Weighted adjusting the fitness average.
+    """
+    ind.multi_gain = multi_gain(metrics["player_life"], metrics["enemy_life"])
+    ind.n_defeated = defeated_enemies(metrics["enemy_life"])
+    ind.player_life = metrics["player_life"].sum()
+    ind.play_time = metrics["time"].sum()
+    ind.defeated = np.where(metrics["enemy_life"] == 0, 1, 0)
+    ind.fitnesses = metrics["fitness"]
