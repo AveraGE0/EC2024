@@ -15,13 +15,13 @@ def register_selection(toolbox: base.Toolbox, config: dict) -> None:
 
     toolbox.register(
         "select_replacement",
-        fitness_sharing,
-        distance_func=euclidean,  # same_loss,  # hamming_distance,
-        distance_property=None,  # "defeated"
-        tournsize=config["rep_tournament_size"],
-        sigma=config["sigma"]
-        #tools.selTournament,
-        #tournsize=config["rep_tournament_size"]
+        #fitness_sharing,
+        #distance_func=euclidean,  # same_loss,  # hamming_distance,
+        #distance_property=None,  # "defeated"
+        #tournsize=config["rep_tournament_size"],
+        #sigma=config["sigma"]
+        tools.selTournament,
+        tournsize=config["rep_tournament_size"]
     )
 
     toolbox.register(

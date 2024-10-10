@@ -4,19 +4,28 @@ from fitness_weighting import FitnessWeighting
 from competition_metrics import multi_gain, defeated_enemies
 
 
-def set_fitness(
-    individuals: list[list],
-    scheduled_weights: FitnessWeighting
+def set_fitness_multi_objective(
+    population: list[list],
+    fitness_weighter: FitnessWeighting,
+    fitness_sharing: callable,
 ) -> None:
-    """Function to set the fitness (weighted!) on all individuals,
-    given the population and the fitness weight scaler.
+    """Function to set the fitness (weighted!) on all individuals, given the population
+    and the fitness weight scaler. The fitness weighter can produce any kind of aggregated
+    values (also mean).
 
     Args:
         individuals (list[list]): Population of individuals.
         scheduled_weights (FitnessWeighting): Fitness weighting object.
     """
-    for ind in individuals:
-        ind.fitness.values = (scheduled_weights.get_weighted_fitness(ind.fitnesses),)
+    for ind in population:
+        ind.fitness.values = (fitness_weighter.get_weighted_fitness(ind.fitnesses),)
+
+    if not fitness_sharing:
+        return
+
+    shared_fitnesses = fitness_sharing(population)
+    for ind, shared_fitness in zip(population, shared_fitnesses):
+        ind.fitness.values = (shared_fitness,)
 
 
 def set_individual_properties(ind, metrics: dict[str, np.ndarray]) -> None:
