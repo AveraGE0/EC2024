@@ -4,7 +4,7 @@ import pickle
 import matplotlib.pyplot as plt
 from neural_controller import NeuralController
 from evoman.environment import Environment
-from plots import multirun_plots, multirun_plots_diversity, plot_final
+from figures.plots import multirun_plots, multirun_plots_diversity, plot_final
 from gain import get_gain_values
 
 

@@ -2,19 +2,26 @@
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 import numpy as np
-from deap.tools import Statistics
+from deap.tools import Logbook
 from scipy.stats import ttest_ind
 import pickle
 
 
-def plot_island_metric(logs: Statistics, metric: str, chapter: str = "fitness", ylog=False):
+def plot_island_metric(
+        logs: Logbook,
+        metric: str,
+        migration_interval: int,
+        chapter: str = "fitness",
+        ylog=False
+    ):
     """ Plots the population's average (including std) and best fitness for each island and overall.
     
     Args:
         logs (Logbook): The DEAP logbook that contains overall stats (mean, std, max).
-        island_stats (list of Logbooks): List of logbooks for each island.
-        n_islands (int): Number of islands.
         metric (str): Metric that should be plotted (must be in logbook!).
+        migration_interval (str): Interval at which the migration happens. In the plot we will have
+                                  a red line at the corresponding generation numbers.
+        chapter (str): Chapter of the MultiStats from which the metric is taken.
         ylog (bool): If true, will set y-axis to symlog scale.
     """
     # Extract overall population stats from the logbook
@@ -36,13 +43,18 @@ def plot_island_metric(logs: Statistics, metric: str, chapter: str = "fitness", 
         ax.plot(gen_filtered, metric_filtered, label=f"i{i} {metric}", markersize=8)
 
     # Add vertical red lines to indicate migration events every 10 generations
-    for gen in range(0, len(set(generation)), 10):
-        ax.axvline(x=gen, color='red', linestyle=':', label="Migration" if gen == 0 else "")
+    for gen in range(0, len(set(generation)), migration_interval):
+        ax.axvline(
+            x=gen,
+            color='red',
+            linestyle=':',
+            label=f"Migration (every {migration_interval})" if gen == 0 else ""
+        )
 
     # Customize the plot
-    ax.set_title("Island Fitness Over Generations with Migration Events")
+    ax.set_title(f"Island {chapter} {metric} Over Generations with Migration Events")
     ax.set_xlabel("Generations")
-    ax.set_ylabel("Fitness")
+    ax.set_ylabel(f"{chapter} {metric}")
     ax.grid(True)
     ax.legend(loc="best")
     ax.spines['top'].set_visible(False)
@@ -58,7 +70,7 @@ def plot_island_metric(logs: Statistics, metric: str, chapter: str = "fitness", 
     return fig
 
 
-def plot_stats(logs: Statistics, ylog=False) -> Figure:
+def plot_stats(logs: Logbook, ylog=False) -> Figure:
     """ Plots the population's average (including std) and best fitness."""
     logs = logs.chapters['fitness']
     generation = logs.select("gen")
