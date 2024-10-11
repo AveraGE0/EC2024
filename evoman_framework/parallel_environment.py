@@ -60,7 +60,9 @@ class ParallelEnvironment:
 
     def get_results(self, population: list) -> list:
         """Method to asynchronously (parallel) get results on a population using
-        multiple processes.
+        multiple processes. Do not start the Parallel environment in a script without
+        running it in the if __main__ == ... branch, otherwise exceptions might be
+        raised.
 
         Args:
             population (list): population being evaluated.
