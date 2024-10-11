@@ -25,7 +25,7 @@ class Environment(object):
     # simulation parameters
     def __init__(self,
                  experiment_name='test',
-                 multiplemode="no",           # yes or no
+                 multiplemode="yes",           # yes or no
                  enemies=[1],                 # array with 1 to 8 items, values from 1 to 8
                  loadplayer="yes",            # yes or no
                  loadenemy="yes",             # yes or no
