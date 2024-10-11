@@ -1,0 +1,56 @@
+# general
+name: "competition_test"
+population_size: 400
+generations: 400
+
+# Neural Network
+n_inputs: 20
+hidden_size: 10
+n_outputs: 5
+init_low: -10.0
+init_up: 10.0
+
+# crossover
+p_crossover: 0.8
+SBX_eta: 5.0
+
+# mutation
+p_mutation: 0.3
+
+polynomial_eta: 10.0
+polynomial_low: -10.0
+polynomial_up: 10.0
+polynomial_indpb: 0.7
+
+# offspring selection
+sel_tournament_size: 5
+
+# replacement selection
+rep_tournament_size: 5
+elitism_size: 2  # 0 to turn off
+elite_metric: multi_gain  # fitness for best run, multi_gain was not as good
+
+# Fitness weighting
+fitness_weighting: proportional
+fw_n_enemies: 8
+fw_step_size: 0.2
+
+# Fitness sharing
+fitness_sharing: on  # off
+distance_func: hamming  # same_loss,  # euclidean
+distance_property: genotype  # "defeated", leave empty to use genotype
+sigma: 8 # in best same_defeat! 20
+
+# island parameters
+islands: 5
+migration_rate: 0.1
+migration_interval: 3
+migration_replace_metric: multi_gain
+migration_tournament_size: 3
+
+# environment specific
+multiplemode: "yes"
+level: 2
+train_enemy: [1, 2, 3, 4, 5, 6, 7, 8]
+test_enemies: [2, 5, 7]
+repeat: 10
