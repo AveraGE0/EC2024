@@ -1,16 +1,19 @@
 import numpy as np
+import pandas as pd
 import random
 import os
+import webbrowser
 from evoman.environment import Environment
 from demo_controller import player_controller
+
 
 # --------------------------
 # Parameters
 # --------------------------
 
 num_islands = 4
-island_population = 50
-num_generations = 20
+island_population = 20
+num_generations = 10
 migration_interval = 5
 migration_rate = 0.1
 tournament_size = 3
@@ -31,8 +34,8 @@ num_weights = (
     num_outputs  # Output layer biases
 )
 
-# Define the experiment name as the full path
-experiment_name = '/Users/mert/Library/CloudStorage/OneDrive-Personal/Documents/Persoonlijk/Study/VU/Year 2/Period 1/Evolutionary Computing/Assignments/Assignment Evoman Task 2/EC2024/evoman_framework/experiment_island_model'
+# Define the experiment name as the relative path
+experiment_name = os.path.join(os.path.dirname(__file__), 'experiment_island_model')
 
 # Create the experiment directory if it doesn't exist
 if not os.path.exists(experiment_name):
@@ -275,3 +278,4 @@ best_overall = max(best_individuals, key=lambda ind: evaluate_individual(ind))
 
 # Save the best overall individual to the experiment directory
 np.savetxt(os.path.join(experiment_name, 'groupnumber.txt'), best_overall)
+df = pd.read_csv(os.path.join('experiment_island_model', 'island_model_metrics.txt'), delimiter='\t')
