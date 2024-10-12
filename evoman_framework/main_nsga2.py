@@ -1,173 +1,205 @@
 import numpy as np
 import random
 import os
+import csv
+import pandas as pd
 from deap import base, creator, tools
 from evoman.environment import Environment
 from demo_controller import player_controller
-import pandas as pd
-import math
+import matplotlib.pyplot as plt
 
-# Define the experiment name and create the directory if it doesn't exist
-experiment_name = 'experiment_nsga2'
-if not os.path.exists(experiment_name):
-    os.makedirs(experiment_name)
-
-# Neural Network parameters
-num_inputs = 20
-num_outputs = 5
-n_hidden_neurons = 10
-
-# Calculate the number of weights in the neural network
-num_weights = (
-        (num_inputs * n_hidden_neurons) +
-        (n_hidden_neurons * num_outputs) +
-        n_hidden_neurons +
-        num_outputs
-)
-
-# Initialize the environment for multiple enemies
-env = Environment(
-    experiment_name=experiment_name,
-    enemies=[2, 4, 7],
-    multiplemode="yes",
-    playermode="ai",
-    player_controller=player_controller(n_hidden_neurons),
-    enemymode="static",
-    level=2,
-    contacthurt='player',
-    speed="fastest"
-)
-
-# Genetic Algorithm parameters
+# Constants
+EXPERIMENT_NAME = 'experiment_nsga2'
+NUM_INPUTS = 20
+NUM_OUTPUTS = 5
+N_HIDDEN_NEURONS = 10
+NUM_WEIGHTS = (NUM_INPUTS * N_HIDDEN_NEURONS) + (N_HIDDEN_NEURONS * NUM_OUTPUTS) + N_HIDDEN_NEURONS + NUM_OUTPUTS
+ENEMY_GROUPS = [[2, 4, 7], [4, 7, 8]]  # Two groups of enemies for training
 POP_SIZE = 50
-N_GEN = 10
+N_GEN = 20
 CXPB = 0.9
 MUTPB = 0.1
 
-# Define a multi-objective fitness function (minimize all objectives)
-creator.create("FitnessMulti", base.Fitness, weights=(-1.0, -1.0, -1.0))
+# Ensure experiment directory exists
+if not os.path.exists(EXPERIMENT_NAME):
+    os.makedirs(EXPERIMENT_NAME)
+
+# DEAP setup
+creator.create("FitnessMulti", base.Fitness, weights=(-1.0, 1.0, -1.0, 1.0))
 creator.create("Individual", list, fitness=creator.FitnessMulti)
 
 toolbox = base.Toolbox()
 toolbox.register("attr_float", random.uniform, -1, 1)
-toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_float, n=num_weights)
+toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_float, n=NUM_WEIGHTS)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
 
-# Evaluation function
-def evaluate(individual):
-    """
-    Evaluates the individual in the environment and returns the fitness.
-    The fitness is calculated as: player_life - enemy_life - log(time)
-    """
+# Environment Setup Module
+def initialize_environment(experiment_name, enemies, multiplemode, n_hidden_neurons):
+    """Initialize the Evoman environment."""
+    return Environment(
+        experiment_name=experiment_name,
+        enemies=enemies,
+        multiplemode=multiplemode,
+        playermode="ai",
+        player_controller=player_controller(n_hidden_neurons),
+        enemymode="static",
+        level=2,
+        speed="fastest"
+    )
+
+
+# Evaluation Module
+def evaluate(individual, env):
+    """Evaluate an individual against all enemies in the current group simultaneously."""
     fitness, player_life, enemy_life, time = env.play(pcont=np.array(individual))
-
-    # Calculate gain (player life - enemy life)
-    total_enemy_life = sum(enemy_life) if isinstance(enemy_life, list) else enemy_life
-    gain = player_life - total_enemy_life
-
-    # Logarithm of time (handling any zero-time edge cases)
-    log_time = math.log(time) if time > 0 else 0
-
-    # Calculate overall fitness as: player_life - enemy_life - log(time)
-    overall_fitness = player_life - total_enemy_life - log_time
-
-    # Return the three objectives for the multi-objective optimization (enemy life, -player life, log time)
-    return total_enemy_life, -player_life, log_time
+    gain = player_life - enemy_life
+    avg_time = time
+    return enemy_life, player_life, np.log(avg_time + 1), gain
 
 
-toolbox.register("evaluate", evaluate)
-toolbox.register("mate", tools.cxSimulatedBinaryBounded, low=-1.0, up=1.0, eta=15)
-toolbox.register("mutate", tools.mutPolynomialBounded, low=-1.0, up=1.0, eta=15, indpb=1.0 / num_weights)
-toolbox.register("select", tools.selNSGA2)
+def evaluate_individual_on_single_enemies(individual, env):
+    """Evaluate an individual against each enemy separately."""
+    total_gain = 0
+    results = {}
+    for enemy_id in range(1, 9):
+        env.update_parameter('enemies', [enemy_id])
+        fitness, player_life, enemy_life, time = env.play(pcont=np.array(individual))
+        gain = player_life - enemy_life
+        total_gain += gain
+        results[f'enemy_{enemy_id}'] = {
+            'player_life': player_life,
+            'enemy_life': enemy_life,
+            'time': time,
+            'gain': gain
+        }
+    results['total_gain'] = total_gain
+    return results
 
 
-# Configure statistics
-def configure_statistics():
-    """
-    This function configures which statistics to track.
-    """
-    stats = tools.Statistics(lambda ind: ind.fitness.values)
-    stats.register("avg", np.mean, axis=0)
-    stats.register("std", np.std, axis=0)
-    stats.register("min", np.min, axis=0)
-    stats.register("max", np.max, axis=0)
-    return stats
+# Logging Module
+def log_metrics(gen, population, logbook, csv_logger):
+    """Log metrics for the current generation."""
+    record = {}
+
+    # Calculate various statistics
+    fitnesses = [ind.fitness.values for ind in population]
+    enemy_lives = [f[0] for f in fitnesses]
+    player_lives = [f[1] for f in fitnesses]
+    times = [np.exp(f[2]) - 1 for f in fitnesses]
+    gains = [f[3] for f in fitnesses]
+
+    record['gen'] = gen
+    record['avg_enemy_life'] = np.mean(enemy_lives)
+    record['std_enemy_life'] = np.std(enemy_lives)
+    record['min_enemy_life'] = np.min(enemy_lives)
+    record['max_enemy_life'] = np.max(enemy_lives)
+    record['avg_player_life'] = np.mean(player_lives)
+    record['std_player_life'] = np.std(player_lives)
+    record['min_player_life'] = np.min(player_lives)
+    record['max_player_life'] = np.max(player_lives)
+    record['avg_time'] = np.mean(times)
+    record['std_time'] = np.std(times)
+    record['min_time'] = np.min(times)
+    record['max_time'] = np.max(times)
+    record['avg_gain'] = np.mean(gains)
+    record['std_gain'] = np.std(gains)
+    record['min_gain'] = np.min(gains)
+    record['max_gain'] = np.max(gains)
+
+    logbook.record(**record)
+    csv_logger.writerow(record)
+
+    print(f"Generation {gen}")
+    print(f"Avg Enemy Life: {record['avg_enemy_life']:.2f}")
+    print(f"Avg Player Life: {record['avg_player_life']:.2f}")
+    print(f"Avg Gain: {record['avg_gain']:.2f}")
+    print(f"Avg Time: {record['avg_time']:.2f}")
+    print("------------------------")
 
 
-# Initialize logbook
-def initialize_logbook():
-    """
-    Initializes the logbook with headers for tracking generations.
-    """
+# Plotting Module
+def plot_metrics(logbook):
+    """Plot metrics over generations."""
+    gen = logbook.select('gen')
+    avg_enemy_life = logbook.select('avg_enemy_life')
+    avg_player_life = logbook.select('avg_player_life')
+    avg_gain = logbook.select('avg_gain')
+    avg_time = logbook.select('avg_time')
+
+    fig, axs = plt.subplots(4, 1, figsize=(10, 20))
+
+    axs[0].plot(gen, avg_enemy_life, label='Avg Enemy Life')
+    axs[0].set_xlabel('Generation')
+    axs[0].set_ylabel('Average Enemy Life')
+    axs[0].legend()
+
+    axs[1].plot(gen, avg_player_life, label='Avg Player Life')
+    axs[1].set_xlabel('Generation')
+    axs[1].set_ylabel('Average Player Life')
+    axs[1].legend()
+
+    axs[2].plot(gen, avg_gain, label='Avg Gain')
+    axs[2].set_xlabel('Generation')
+    axs[2].set_ylabel('Average Gain')
+    axs[2].legend()
+
+    axs[3].plot(gen, avg_time, label='Avg Time')
+    axs[3].set_xlabel('Generation')
+    axs[3].set_ylabel('Average Time')
+    axs[3].legend()
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(EXPERIMENT_NAME, 'metrics_plot.png'))
+
+
+# Analysis Module
+def analyze_results(all_results):
+    avg_gains = []
+    defeated_enemies = []
+
+    for result in all_results:
+        gains = [r['gain'] for r in result.values() if isinstance(r, dict)]
+        avg_gains.append(sum(gains) / len(gains))
+        defeated = sum(1 for r in result.values() if isinstance(r, dict) and r['enemy_life'] <= 0)
+        defeated_enemies.append(defeated)
+
+    print(f"Average Gain across all solutions: {sum(avg_gains) / len(avg_gains):.2f}")
+    print(f"Average Defeated Enemies: {sum(defeated_enemies) / len(defeated_enemies):.2f}")
+    print(f"Best Solution Defeated: {max(defeated_enemies)} enemies")
+
+
+# Evolutionary Algorithm Module
+def evolutionary_algorithm(toolbox, train_env):
+    """Perform the evolutionary algorithm."""
+    population = toolbox.population(n=POP_SIZE)
     logbook = tools.Logbook()
-    logbook.header = ['gen', 'nevals', 'avg_gain', 'avg_log_time', 'avg_fitness'] + ['avg_enemy_life',
-                                                                                     'avg_player_life',
-                                                                                     'std_enemy_life',
-                                                                                     'std_player_life'] + [
-                         'min_enemy_life', 'min_player_life', 'max_enemy_life', 'max_player_life']
-    return logbook
+    pareto = tools.ParetoFront()
 
+    # Prepare CSV logger
+    csv_file = open(os.path.join(EXPERIMENT_NAME, 'metrics.csv'), 'w', newline='')
+    csv_logger = csv.DictWriter(csv_file, fieldnames=['gen', 'avg_enemy_life', 'std_enemy_life', 'min_enemy_life',
+                                                      'max_enemy_life',
+                                                      'avg_player_life', 'std_player_life', 'min_player_life',
+                                                      'max_player_life',
+                                                      'avg_time', 'std_time', 'min_time', 'max_time',
+                                                      'avg_gain', 'std_gain', 'min_gain', 'max_gain'])
+    csv_logger.writeheader()
 
-# Update the logbook after each generation
-def update_logbook(logbook, gen, invalid_ind, population, stats):
-    """
-    Updates the logbook with statistics for the current generation.
-    """
-    # Gather statistics for enemy life, player life, log time, gain, and fitness
-    gains = [ind.fitness.values[3] for ind in population]
-    log_times = [ind.fitness.values[2] for ind in population]
-    fitnesses = [ind.fitness.values[4] for ind in population]
+    # Evaluate initial population
+    for ind in population:
+        ind.fitness.values = toolbox.evaluate(ind, env=train_env)
 
-    avg_gain = np.mean(gains)
-    avg_log_time = np.mean(log_times)
-    avg_fitness = np.mean(fitnesses)
+    # Log initial metrics
+    log_metrics(0, population, logbook, csv_logger)
 
-    # Compile stats for enemy life and player life
-    record = stats.compile(population)
-
-    # Log the results for this generation
-    logbook.record(gen=gen, nevals=len(invalid_ind), avg_gain=avg_gain, avg_log_time=avg_log_time,
-                   avg_fitness=avg_fitness, **record)
-    print(logbook.stream)
-
-
-# Export logbook to CSV
-def export_logbook_to_csv(logbook, experiment_name):
-    """
-    Exports the logbook data to a CSV file after the experiment is completed.
-    """
-    filepath = os.path.join(experiment_name, "logbook_statistics.csv")
-    df = pd.DataFrame(logbook)  # Convert logbook to pandas DataFrame
-    df.to_csv(filepath, index=False)
-    print(f"Logbook data saved to {filepath}")
-
-
-# Main genetic algorithm function
-def main():
-    # Initialize the population
-    pop = toolbox.population(n=POP_SIZE)
-
-    # Initialize logbook and Pareto front
-    stats = configure_statistics()  # Configure the statistics to track
-    logbook = initialize_logbook()
-    pareto_front = tools.ParetoFront()
-
-    # Run the genetic algorithm for a specified number of generations
+    # Begin the evolution
     for gen in range(1, N_GEN + 1):
-        print(f"Generation {gen}")
+        # Select and clone offspring
+        offspring = toolbox.select(population, len(population))
+        offspring = [toolbox.clone(ind) for ind in offspring]
 
-        # Evaluate the individuals with an initial fitness evaluation
-        for ind in pop:
-            ind.fitness.values = toolbox.evaluate(ind)
-
-        # Select the next generation individuals
-        offspring = toolbox.select(pop, len(pop))
-
-        # Clone the selected individuals
-        offspring = list(map(toolbox.clone, offspring))
-
-        # Apply crossover and mutation on the offspring
+        # Apply crossover and mutation
         for child1, child2 in zip(offspring[::2], offspring[1::2]):
             if random.random() < CXPB:
                 toolbox.mate(child1, child2)
@@ -179,22 +211,81 @@ def main():
                 toolbox.mutate(mutant)
                 del mutant.fitness.values
 
-        # Evaluate the individuals with invalid fitness
+        # Evaluate new individuals
         invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
         for ind in invalid_ind:
-            ind.fitness.values = toolbox.evaluate(ind)
+            ind.fitness.values = toolbox.evaluate(ind, env=train_env)
 
-        # The population is entirely replaced by the offspring
-        pop[:] = offspring
+        # Update population and Pareto front
+        population[:] = offspring
+        pareto.update(population)
 
-        # Update the Pareto front with current population
-        pareto_front.update(pop)
+        # Log metrics
+        log_metrics(gen, population, logbook, csv_logger)
 
-        # Gather statistics and update the logbook
-        update_logbook(logbook, gen, invalid_ind, pop, stats)
+        # Switch enemy group every 25 generations
+        if gen % 25 == 0:
+            new_group = ENEMY_GROUPS[(gen // 25) % len(ENEMY_GROUPS)]
+            train_env.update_parameter('enemies', new_group)
+            print(f"Switched to enemy group: {new_group}")
 
-    # Export logbook data to CSV at the end of the run
-    export_logbook_to_csv(logbook, experiment_name)
+    # Close CSV file
+    csv_file.close()
+
+    return population, logbook
+
+
+# Main Function
+def main():
+    random.seed(42)
+
+    # Initialize environments
+    train_env = initialize_environment(
+        EXPERIMENT_NAME,
+        ENEMY_GROUPS[0],
+        "yes",  # Multiple mode activated during training
+        N_HIDDEN_NEURONS
+    )
+
+    eval_env = initialize_environment(
+        EXPERIMENT_NAME,
+        [1],  # This will be updated during evaluation
+        "no",  # Single enemy evaluation
+        N_HIDDEN_NEURONS
+    )
+
+    # Register evaluation function with the training environment
+    toolbox.register("evaluate", evaluate, env=train_env)
+    toolbox.register("mate", tools.cxSimulatedBinaryBounded, low=-1.0, up=1.0, eta=15)
+    toolbox.register("mutate", tools.mutPolynomialBounded, low=-1.0, up=1.0, eta=15, indpb=1.0 / NUM_WEIGHTS)
+    toolbox.register("select", tools.selNSGA2)
+
+    # Run the evolutionary algorithm
+    population, logbook = evolutionary_algorithm(toolbox, train_env)
+
+    # Plot metrics
+    plot_metrics(logbook)
+
+    # Test best solutions against all enemies
+    best_solutions = tools.selBest(population, k=10)  # Select top 10 solutions
+    all_enemy_results = []
+
+    for solution in best_solutions:
+        enemy_results = evaluate_individual_on_single_enemies(solution, eval_env)
+        all_enemy_results.append(enemy_results)
+
+    # Save results to CSV
+    results_df = pd.DataFrame(all_enemy_results)
+    results_df.to_csv(os.path.join(EXPERIMENT_NAME, 'all_enemy_results.csv'), index=False)
+
+    # Analyze and print results
+    analyze_results(all_enemy_results)
+
+    # Save best overall individual
+    best_overall = max(best_solutions, key=lambda ind: evaluate_individual_on_single_enemies(ind, eval_env)['total_gain'])
+    np.savetxt(os.path.join(EXPERIMENT_NAME, 'best_solution.txt'), best_overall)
+
+    print("Evolution complete. Results saved in", EXPERIMENT_NAME)
 
 
 if __name__ == "__main__":
