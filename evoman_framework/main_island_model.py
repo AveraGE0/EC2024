@@ -34,8 +34,11 @@ NUM_WEIGHTS = (
     NUM_OUTPUTS  # Output layer biases
 )
 
-# Experiment name and directory
-EXPERIMENT_NAME = '/Users/mert/Library/CloudStorage/OneDrive-Personal/Documents/Persoonlijk/Study/VU/Year 2/Period 1/Evolutionary Computing/Assignments/Assignment Evoman Task 2/EC2024/evoman_framework/experiment_island_model'
+# Define the base directory as the current script's location
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Make the experiment path relative to the EC2024 directory
+EXPERIMENT_NAME = os.path.join(BASE_DIR, 'evoman_framework', 'experiment_island_model')
 
 # Create the experiment directory if it doesn't exist
 if not os.path.exists(EXPERIMENT_NAME):

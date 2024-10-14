@@ -28,7 +28,7 @@ NUM_WEIGHTS = (
     NUM_OUTPUTS  # Output layer biases
 )
 
-ENEMY_GROUPS = [[2, 4, 7], [4, 7, 8]]  # Two groups of enemies for training
+ENEMY_GROUPS = [[1, 2, 3, 4], [5, 6, 7, 8]]  # Two groups of enemies for training
 POP_SIZE = 100
 N_GEN = 20  # Number of generations per enemy group
 CXPB = 0.7  # Crossover rate
@@ -148,42 +148,25 @@ def euclidean_distance(ind1, ind2):
     """Calculate Euclidean distance between two individuals."""
     return np.linalg.norm(np.array(ind1) - np.array(ind2))
 
-"""
-# Fitness Sharing
-def fitness_sharing(population):
-    """Apply fitness sharing to the population."""
-    sigma_share = 0.5  # Sharing radius
-    alpha = 1  # Sharing coefficient
-
-    for ind in population:
-        niche_count = 0
-        for other in population:
-            distance = euclidean_distance(ind, other)
-            if distance < sigma_share:
-                niche_count += 1 - (distance / sigma_share) ** alpha
-        if niche_count > 0:
-            ind.fitness.values = tuple(f / niche_count for f in ind.fitness.values)
-
-def euclidean_distance(ind1, ind2):
-    ""Calculate Euclidean distance between two individuals.""
-    return np.linalg.norm(np.array(ind1) - np.array(ind2))
-    
-"""
-
 # --------------------------
 # Logging Functions
 # --------------------------
 
-def log_metrics(gen, population, logbook, csv_logger, diversity_logger):
+def log_metrics(gen, population, logbook, csv_logger, diversity_logger, stats_logger, fitness_logger):
     """Log metrics for the current generation."""
     record = {}
 
-    # Calculate various statistics
-    fitnesses = [ind.fitness.values for ind in population]
-    enemy_lives = [f[0] for f in fitnesses]
-    player_lives = [f[1] for f in fitnesses]
-    times = [np.exp(f[2]) - 1 for f in fitnesses]
-    gains = [f[3] for f in fitnesses]
+    # Calculate fitness statistics
+    fitnesses = [ind.fitness.values[1] for ind in population]  # Assuming the second value represents fitness
+    min_fitness = np.min(fitnesses)
+    max_fitness = np.max(fitnesses)
+    avg_fitness = np.mean(fitnesses)
+
+    # Calculate other statistics
+    enemy_lives = [ind.fitness.values[0] for ind in population]
+    player_lives = [ind.fitness.values[1] for ind in population]
+    times = [np.exp(ind.fitness.values[2]) - 1 for ind in population]
+    gains = [ind.fitness.values[3] for ind in population]
 
     # Diversity metrics
     distances = []
@@ -192,82 +175,77 @@ def log_metrics(gen, population, logbook, csv_logger, diversity_logger):
             distances.append(euclidean_distance(population[i], population[j]))
     avg_distance = np.mean(distances) if distances else 0
 
+    # Store the key metrics for this generation
     record['gen'] = gen
-    record['avg_enemy_life'] = np.mean(enemy_lives)
-    record['std_enemy_life'] = np.std(enemy_lives)
-    record['min_enemy_life'] = np.min(enemy_lives)
-    record['max_enemy_life'] = np.max(enemy_lives)
-    record['avg_player_life'] = np.mean(player_lives)
-    record['std_player_life'] = np.std(player_lives)
-    record['min_player_life'] = np.min(player_lives)
-    record['max_player_life'] = np.max(player_lives)
-    record['avg_time'] = np.mean(times)
-    record['std_time'] = np.std(times)
-    record['min_time'] = np.min(times)
-    record['max_time'] = np.max(times)
+    record['avg_fitness'] = avg_fitness
+    record['min_fitness'] = min_fitness
+    record['max_fitness'] = max_fitness
     record['avg_gain'] = np.mean(gains)
-    record['std_gain'] = np.std(gains)
-    record['min_gain'] = np.min(gains)
-    record['max_gain'] = np.max(gains)
     record['avg_distance'] = avg_distance
 
-    logbook.record(**record)
-    csv_logger.writerow(record)
+    # Log to fitness logger (new)
+    fitness_logger.writerow({
+        'gen': gen,
+        'avg_fitness': avg_fitness,
+        'min_fitness': min_fitness,
+        'max_fitness': max_fitness,
+        'avg_gain': np.mean(gains),
+        'avg_distance': avg_distance
+    })
+
+    # Log to other CSVs (this logs all the additional fields)
+    csv_logger.writerow({
+        'gen': gen,
+        'avg_enemy_life': np.mean(enemy_lives),
+        'std_enemy_life': np.std(enemy_lives),
+        'min_enemy_life': np.min(enemy_lives),
+        'max_enemy_life': np.max(enemy_lives),
+        'avg_player_life': np.mean(player_lives),
+        'std_player_life': np.std(player_lives),
+        'min_player_life': np.min(player_lives),
+        'max_player_life': np.max(player_lives),
+        'avg_time': np.mean(times),
+        'std_time': np.std(times),
+        'min_time': np.min(times),
+        'max_time': np.max(times),
+        'avg_gain': np.mean(gains),
+        'std_gain': np.std(gains),
+        'min_gain': np.min(gains),
+        'max_gain': np.max(gains),
+        'avg_distance': avg_distance
+    })
+
+    # Log diversity data
     diversity_logger.writerow({'gen': gen, 'avg_distance': avg_distance})
+
+    # Log generation statistics (you can duplicate the fields you want here, similar to csv_logger)
+    stats_logger.writerow({
+        'gen': gen,
+        'avg_enemy_life': np.mean(enemy_lives),
+        'std_enemy_life': np.std(enemy_lives),
+        'min_enemy_life': np.min(enemy_lives),
+        'max_enemy_life': np.max(enemy_lives),
+        'avg_player_life': np.mean(player_lives),
+        'std_player_life': np.std(player_lives),
+        'min_player_life': np.min(player_lives),
+        'max_player_life': np.max(player_lives),
+        'avg_time': np.mean(times),
+        'std_time': np.std(times),
+        'min_time': np.min(times),
+        'max_time': np.max(times),
+        'avg_gain': np.mean(gains),
+        'std_gain': np.std(gains),
+        'min_gain': np.min(gains),
+        'max_gain': np.max(gains),
+        'avg_distance': avg_distance
+    })
 
     # Print metrics to console
     print(f"Generation {gen}")
-    print(f"Avg Enemy Life: {record['avg_enemy_life']:.2f}")
-    print(f"Avg Player Life: {record['avg_player_life']:.2f}")
-    print(f"Avg Gain: {record['avg_gain']:.2f}")
-    print(f"Avg Diversity: {avg_distance:.4f}")
+    print(f"Avg Fitness: {record['avg_fitness']:.2f}, Min Fitness: {record['min_fitness']:.2f}, Max Fitness: {record['max_fitness']:.2f}")
+    print(f"Avg Enemy Life: {np.mean(enemy_lives):.2f}, Avg Player Life: {np.mean(player_lives):.2f}")
+    print(f"Avg Gain: {np.mean(gains):.2f}, Avg Diversity: {avg_distance:.4f}")
     print("------------------------")
-
-# --------------------------
-# Plotting Functions
-# --------------------------
-
-def plot_metrics(logbooks, group_names):
-    """Plot metrics over generations for each group."""
-    for logbook, group_name in zip(logbooks, group_names):
-        gen = logbook.select('gen')
-        avg_enemy_life = logbook.select('avg_enemy_life')
-        avg_player_life = logbook.select('avg_player_life')
-        avg_gain = logbook.select('avg_gain')
-        avg_time = logbook.select('avg_time')
-        avg_distance = logbook.select('avg_distance')
-
-        fig, axs = plt.subplots(5, 1, figsize=(10, 25))
-
-        axs[0].plot(gen, avg_enemy_life, label='Avg Enemy Life')
-        axs[0].set_xlabel('Generation')
-        axs[0].set_ylabel('Average Enemy Life')
-        axs[0].legend()
-
-        axs[1].plot(gen, avg_player_life, label='Avg Player Life')
-        axs[1].set_xlabel('Generation')
-        axs[1].set_ylabel('Average Player Life')
-        axs[1].legend()
-
-        axs[2].plot(gen, avg_gain, label='Avg Gain')
-        axs[2].set_xlabel('Generation')
-        axs[2].set_ylabel('Average Gain')
-        axs[2].legend()
-
-        axs[3].plot(gen, avg_time, label='Avg Time')
-        axs[3].set_xlabel('Generation')
-        axs[3].set_ylabel('Average Time')
-        axs[3].legend()
-
-        axs[4].plot(gen, avg_distance, label='Avg Diversity')
-        axs[4].set_xlabel('Generation')
-        axs[4].set_ylabel('Average Diversity')
-        axs[4].legend()
-
-        plt.tight_layout()
-        plt.savefig(os.path.join(EXPERIMENT_NAME, f'metrics_plot_{group_name}.png'))
-        plt.close()
-
 # --------------------------
 # Analysis Functions
 # --------------------------
@@ -300,7 +278,7 @@ def evolutionary_algorithm(toolbox, train_env, group_name):
     population = toolbox.population(n=POP_SIZE)
     logbook = tools.Logbook()
 
-    # Prepare CSV logger
+    # Prepare CSV logger for per-group metrics
     csv_file = open(os.path.join(EXPERIMENT_NAME, f'metrics_{group_name}.csv'), 'w', newline='')
     csv_logger = csv.DictWriter(csv_file, fieldnames=[
         'gen', 'avg_enemy_life', 'std_enemy_life', 'min_enemy_life', 'max_enemy_life',
@@ -315,12 +293,29 @@ def evolutionary_algorithm(toolbox, train_env, group_name):
     diversity_logger = csv.DictWriter(diversity_file, fieldnames=['gen', 'avg_distance'])
     diversity_logger.writeheader()
 
+    # Create a new CSV file to log generation statistics
+    stats_file = open(os.path.join(EXPERIMENT_NAME, 'generation_statistics.csv'), 'w', newline='')
+    stats_logger = csv.DictWriter(stats_file, fieldnames=[
+        'gen', 'avg_enemy_life', 'std_enemy_life', 'min_enemy_life', 'max_enemy_life',
+        'avg_player_life', 'std_player_life', 'min_player_life', 'max_player_life',
+        'avg_time', 'std_time', 'min_time', 'max_time',
+        'avg_gain', 'std_gain', 'min_gain', 'max_gain', 'avg_distance'
+    ])
+    stats_logger.writeheader()
+
+    # Fitness logger (new)
+    fitness_file = open(os.path.join(EXPERIMENT_NAME, f'fitness_{group_name}.csv'), 'w', newline='')
+    fitness_logger = csv.DictWriter(fitness_file, fieldnames=[
+        'gen', 'avg_fitness', 'min_fitness', 'max_fitness', 'avg_gain', 'avg_distance'
+    ])
+    fitness_logger.writeheader()
+
     # Evaluate initial population
     for ind in population:
         ind.fitness.values = toolbox.evaluate(ind, env=train_env)
 
     # Log initial metrics
-    log_metrics(0, population, logbook, csv_logger, diversity_logger)
+    log_metrics(0, population, logbook, csv_logger, diversity_logger, stats_logger, fitness_logger)
 
     # Begin the evolution
     for gen in range(1, N_GEN + 1):
@@ -361,12 +356,14 @@ def evolutionary_algorithm(toolbox, train_env, group_name):
         # Ensure population size remains POP_SIZE
         population = tools.selBest(population, POP_SIZE)
 
-        # Log metrics
-        log_metrics(gen, population, logbook, csv_logger, diversity_logger)
+        # Log metrics for this generation
+        log_metrics(gen, population, logbook, csv_logger, diversity_logger, stats_logger, fitness_logger)
 
     # Close CSV files
     csv_file.close()
     diversity_file.close()
+    stats_file.close()
+    fitness_file.close()
 
     return population, logbook
 
@@ -407,6 +404,7 @@ def main():
         all_logbooks.append(logbook)
 
     # Plot metrics for all groups
+    from plotting import plot_metrics
     plot_metrics(all_logbooks, group_names)
 
     # Test best solutions against all enemies
@@ -433,7 +431,6 @@ def main():
         all_enemy_results.append(enemy_results)
 
     # Save results to CSV
-    # Prepare the data for the DataFrame
     results_list = []
     for result in all_enemy_results:
         row = {'group': result['group'], 'total_gain': result['total_gain'], 'defeated_enemies': result['defeated_enemies']}
