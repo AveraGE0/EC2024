@@ -41,6 +41,9 @@ def create_offspring(
 
     undetermined_fitness_individuals = [ind for ind in offspring if not ind.fitness.valid]
 
+    for ind in undetermined_fitness_individuals:
+        toolbox.constrain_individual(ind)
+
     return undetermined_fitness_individuals, offspring
 
 

@@ -45,3 +45,16 @@ def set_individual_properties(ind, metrics: dict[str, np.ndarray]) -> None:
     ind.play_time = metrics["time"].sum()
     ind.defeated = np.where(metrics["enemy_life"] == 0, 1, 0)
     ind.fitnesses = metrics["fitness"]
+
+
+def enforce_individual_bounds(individual: list, lower_bound: float, upper_bound: float):
+    """Function to enforce the maximal size for alleles. Clamps all values of offspring
+    to the given range.
+
+    Args:
+        individual (list): Individual as list.
+        lower_bound (float): Lower bound for single values in the list.
+        upper_bound (float): Upper_bound for single values in the list.
+    """
+    clipped_values = np.clip(individual, a_min=lower_bound, a_max=upper_bound)
+    individual[:] = clipped_values
