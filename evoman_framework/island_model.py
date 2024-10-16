@@ -1,4 +1,6 @@
 """Module providing a representation to work easier with island models."""
+import random
+import numpy as np
 from deap import base
 
 
@@ -43,7 +45,8 @@ class IslandsModel:
         if total_population < n_islands:
             raise ValueError("Error, the population size in combination with the amount of islands"\
                              f"does not make sense: {total_population} in {self.n_islands}!?")
-
+        np.random.seed(42)
+        random.seed(42)
         self.islands_merged = toolbox.population(n=total_population)
         self.islands_borders = list(
             range(0, total_population, (total_population//n_islands))
