@@ -1,7 +1,7 @@
 """Module containing utility for the stats setup."""
 import numpy as np
 from deap import tools
-from diversity_metrics import mean_euclidean_distance, mean_hamming_distance
+from ea.fitness_sharing import mean_euclidean_distance, mean_hamming_distance
 
 
 def create_population_stats() -> tools.MultiStatistics:
@@ -11,10 +11,14 @@ def create_population_stats() -> tools.MultiStatistics:
         tools.MultiStatistics: MultiStatistics used in the run.
     """
     fitness_stats = tools.Statistics(key=lambda ind: ind.fitness.values)
-
     fitness_stats.register("avg", np.mean)
     fitness_stats.register("std", np.std)
     fitness_stats.register("max", np.max)
+
+    raw_fitness_stats = tools.Statistics(key=lambda ind: ind.fitnesses)
+    raw_fitness_stats.register("avg", np.mean, axis=0)
+    raw_fitness_stats.register("std", np.std, axis=0)
+    raw_fitness_stats.register("max", np.max, axis=0)
 
     gain_stats = tools.Statistics(key=lambda ind: ind.multi_gain)
     gain_stats.register("avg_sum", np.mean)
@@ -38,6 +42,7 @@ def create_population_stats() -> tools.MultiStatistics:
 
     return tools.MultiStatistics(
         fitness=fitness_stats,
+        fitnesses=raw_fitness_stats,
         gain=gain_stats,
         defeated=defeated_stats,
         life=life_stats,

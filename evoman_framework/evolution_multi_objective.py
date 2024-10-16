@@ -8,7 +8,7 @@ from pymoo.algorithms.moo.sms import SMSEMOA
 from pymoo.optimize import minimize
 
 from multi_objective.problem import MyProblem
-from multi_objective.sampling import MySampling
+from multi_objective.sampling import MySampling, PreTrainedPopulation
 from pymoo.visualization.scatter import Scatter
 
 from ea.fitness_functions import default_fitness
@@ -46,8 +46,7 @@ if __name__ == "__main__":
 
     algorithm = SMSEMOA(
         pop_size=400,
-        sampling=MySampling(),
-
+        sampling=PreTrainedPopulation(pop_path="../experiments/competition_test_best_8_496/final_population.pkl"),
     )
 
     my_problem = MyProblem(par_env)

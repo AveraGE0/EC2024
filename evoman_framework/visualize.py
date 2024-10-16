@@ -63,17 +63,21 @@ def show_run(individual: list, enemies: list, config: dict, speed="fastest"):
         won += int(e_energy == 0)
 
         print(
-            f"Enemy {enemy}: fitness: {final_fitness},\t gain: {p_energy - e_energy},"\
+            f"Enemy {enemy}: fitness: {round(final_fitness, 3)},\t gain: {round(p_energy - e_energy, 3)},"\
             f"\t defeated: {'yes' if e_energy == 0 else 'no'}"
         )
-    print(f"Total won: {won}, total gain: {total_gain}, avg fitness: {total_fitness/8}")
+    print(
+        f"Total won: {won},"\
+        f" total gain: {round(total_gain, 3)},"\
+        f" avg fitness: {round(total_fitness/8, 3)}"
+    )
 
 
 if __name__ == '__main__':
     np.set_printoptions(precision=3)
     RUN_DIR = "..\\experiments\\competition_test\\"
 
-    with open(os.path.join(RUN_DIR, "fittest_individual.pkl"), mode="rb") as ind_file:
+    with open(os.path.join(RUN_DIR, "best_individual_multi_gain.pkl"), mode="rb") as ind_file:
         ind = pickle.load(ind_file)
 
     with open(os.path.join(RUN_DIR, "config.yaml"), mode="r", encoding="utf-8") as config_file:

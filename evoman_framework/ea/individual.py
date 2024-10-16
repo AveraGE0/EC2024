@@ -1,6 +1,6 @@
 """Module for setting values on individuals."""
 import numpy as np
-from fitness_weighting import FitnessWeighting
+from ea.fitness_weighting import FitnessWeighting
 from competition_metrics import multi_gain, defeated_enemies
 
 
