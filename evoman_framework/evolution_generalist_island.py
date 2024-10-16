@@ -1,27 +1,34 @@
 """File to run the neural evolution"""
 import os
 import pickle
-import matplotlib.pyplot as plt
+import itertools
 import yaml
+import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 from deap import base, creator, tools
-from ea.fitness_sharing import share_fitness
-from neural_controller import NeuralController
-from figures.plots import plot_stats
-from visualize import show_run
-from parallel_environment import ParallelEnvironment
-from island_model import IslandsModel
-from fitness_weighting import fitness_weighting_factory
-from ea.stats import create_island_stats, create_population_stats
+
 from ea.fitness_functions import default_fitness
+from ea.fitness_sharing import euclidean, hamming, same_loss, share_fitness
+from ea.individual import (
+    enforce_individual_bounds,
+    set_fitness_multi_objective,
+    set_individual_properties
+)
 from ea.offspring_creation import create_offspring, register_recombination
-from ea.replacement import replace
-from ea.individual import set_fitness_multi_objective, set_individual_properties
-from ea.selection import register_selection
 from ea.populations import register_population
-from figures.plots import plot_island_metric
-from ea.fitness_sharing import hamming, euclidean, same_loss
+from ea.replacement import replace
+from ea.selection import register_selection
+from ea.stats import create_island_stats, create_population_stats
+from ea.fitness_weighting import fitness_weighting_factory
+from ea.serialization import save_best_individual
+
+from figures.plots import plot_island_metric, plot_population_metric, plot_stats
+
+from island_model import IslandsModel
+from neural_controller import NeuralController
+from parallel_environment import ParallelEnvironment
+from visualize import show_run
 
 
 def evolution(
@@ -51,9 +58,13 @@ def evolution(
         **{key.lstrip("fw_"): value for key, value in config.items() if "fw" in key}
     )
 
-    fitness_sharing_func = None
-    if hasattr(toolbox, "fitness_sharing") and callable(toolbox.fitness_sharing):
-        fitness_sharing_func = toolbox.fitness_sharing
+    fitness_sharing_func_sel = None
+    if hasattr(toolbox, "fitness_sharing_sel") and callable(toolbox.fitness_sharing_sel):
+        fitness_sharing_func_sel = toolbox.fitness_sharing_sel
+
+    fitness_sharing_func_rec = None
+    if hasattr(toolbox, "fitness_sharing_rec") and callable(toolbox.fitness_sharing_rec):
+        fitness_sharing_func_rec = toolbox.fitness_sharing_rec
 
     mu = config["population_size"]
 
@@ -74,7 +85,7 @@ def evolution(
         toolbox.calculate_fitness,
         parameters={
             "fitness_weighter": fitness_weights,
-            "fitness_sharing": fitness_sharing_func
+            "fitness_sharing": fitness_sharing_func_sel
         }
     )
 
@@ -95,20 +106,27 @@ def evolution(
 
         toolbox.simulate(all_new_individuals)
 
+        if config["sharing_type"] == "global":
+            # create a list containing one large population to share
+            sharing_populations = [
+                list(itertools.chain(islands.get_total_population(), *islands_offspring))
+            ]
+        elif config["sharing_type"] == "islands":
+            # create a population for each island
+            sharing_populations = [
+                island + offspring for island, offspring in
+                zip(islands.get_islands(), islands_offspring)
+            ]
+        else:
+            raise ValueError(f"Fitness sharing type: {config['sharing_type']} does not exist")
         # update the fitness of all individuals since it might change
-        for island, offspring in zip(islands.get_islands(), islands_offspring):
+        for share_pop in sharing_populations:
             # this needs to be done for fitness sharing, modified in place!
             toolbox.calculate_fitness(
-                island + offspring,
+                share_pop,
                 fitness_weighter=fitness_weights,
-                fitness_sharing=fitness_sharing_func
+                fitness_sharing=fitness_sharing_func_rec
             )
-        #islands.map_total_population(
-        #    toolbox.calculate_fitness,
-        #    parameters={"scheduled_weights": fitness_weights}
-        #)
-        # evaluate new individuals (not in total population)
-        #toolbox.calculate_fitness(all_new_individuals, fitness_weights)
 
         for i, offspring in enumerate(islands_offspring):
             population = islands.get_island(i)
@@ -124,12 +142,20 @@ def evolution(
                 )
             )
 
+        if config["sharing_type"] == "global":
+            # create a list containing one large population to share
+            sharing_populations = [islands.get_total_population()]
+        elif config["sharing_type"] == "islands":
+            # create a population for each island
+            sharing_populations = islands.get_islands()
+        else:
+            raise ValueError(f"Fitness sharing type: {config['sharing_type']} does not exist")
         # re-evaluate fitness in case of fitness sharing
-        for island in islands.get_islands():
+        for share_pop in sharing_populations:
             toolbox.calculate_fitness(
-                island,
+                share_pop,
                 fitness_weighter=fitness_weights,
-                fitness_sharing=fitness_sharing_func
+                fitness_sharing=fitness_sharing_func_sel
             )
 
         fitness_weights.update(
@@ -140,7 +166,8 @@ def evolution(
                 "defeated": np.array(
                     [ind.defeated for ind in islands.get_total_population()]
                 ).mean(axis=0)
-            }
+            },
+            progress=current_gen/config["generations"]
         )
 
         if current_gen > 0 and current_gen % int(config["migration_interval"]) == 0:
@@ -161,23 +188,31 @@ def evolution(
         # display stats above progress bar
         tqdm.write(logbook.stream)
 
-        fig = plot_island_metric(
-            island_logbook,
-            "euclidean_avg", 
-            config["migration_interval"],
-            chapter="diversity_stats"
-        )
-        fig.savefig(os.path.join('../experiments', config["name"], "island_diversity.png"))
-        plt.close(fig)
-        fig = plot_island_metric(
-            island_logbook,
-            "avg",
-            config["migration_interval"],
-            chapter="fitness"
-        )
-        fig.savefig(os.path.join('../experiments', config["name"], "island_fitness.png"))
-        plt.close(fig)
-        plt.close()
+        for chapter, metric, plot_name in config["island_plots"]:
+            fig = plot_island_metric(
+                island_logbook,
+                metric,
+                config["migration_interval"],
+                chapter=chapter
+            )
+            fig.savefig(
+                os.path.join('../experiments', config["name"], plot_name),
+                dpi=config["plot_dpi"]
+            )
+            plt.close(fig)
+
+        for chapter, metric, plot_name in config["population_plots"]:
+            fig = plot_population_metric(
+                logbook,
+                metric,
+                config["migration_interval"],
+                chapter=chapter
+            )
+            fig.savefig(
+                os.path.join('../experiments', config["name"], plot_name),
+                dpi=config["plot_dpi"]
+            )
+            plt.close(fig)
 
     return islands, logbook, island_logbook
 
@@ -214,9 +249,9 @@ def run_experiment(config: dict) -> None:
     config["individual_size"] = nc.get_genome_size()
 
     p_env = ParallelEnvironment(
-        n_processes=16,
+        n_processes=config["n_processes"],
         config=config,
-        fitness_func=default_fitness
+        fitness_func=globals().get(config["fitness_func"])
     )
 
     p_env.start_processes()
@@ -236,13 +271,18 @@ def run_experiment(config: dict) -> None:
 
     register_selection(toolbox, config)
 
-    #fitness_sharing,
-    #distance_func=euclidean,  # same_loss,  # hamming_distance,
-    #distance_property=None,  # "defeated"
-    #sigma=config["sigma"]
-    if config["fitness_sharing"]:
+    if config["fitness_sharing_sel"]:
         toolbox.register(
-            "fitness_sharing",
+            "fitness_sharing_sel",
+            share_fitness,
+            distance_func=globals().get(config["distance_func"]),
+            distance_property=config["distance_property"],
+            sigma=config["sigma"]
+        )
+
+    if config["fitness_sharing_rec"]:
+        toolbox.register(
+            "fitness_sharing_rec",
             share_fitness,
             distance_func=globals().get(config["distance_func"]),
             distance_property=config["distance_property"],
@@ -252,6 +292,13 @@ def run_experiment(config: dict) -> None:
     toolbox.register("simulate", simulate)
 
     toolbox.register("calculate_fitness", set_fitness_multi_objective)
+
+    toolbox.register(
+        "constrain_individual",
+        enforce_individual_bounds,
+        lower_bound=config["allele_lower_limit"],
+        upper_bound=config["allele_upper_limit"]
+    )
 
     multi_stats = create_population_stats()
     island_stats = create_island_stats()
@@ -301,17 +348,13 @@ def run_experiment(config: dict) -> None:
     with open(os.path.join(experiment_name, 'final_population.pkl'), 'wb') as p_file:
         pickle.dump(final_islands_list, p_file)
 
-    # get best individual (sort descending!)
-    best_individual = sorted(
-        final_islands.get_total_population(),
-        reverse=True,
-        key=lambda x: x.fitness.values[0]
-    )[0]
-
-    # save best individual (fitness)
-    print(f"Saving best individual with fitness of={round(best_individual.fitness.values[0], 4)}")
-    with open(os.path.join(experiment_name, 'fittest_individual.pkl'), 'wb') as i_file:
-        pickle.dump(best_individual, i_file)
+    for save_by_metric, best in config["save_best_individual"]:
+        save_best_individual(
+            experiment_name,
+            final_islands.get_total_population(),
+            metric=save_by_metric,
+            best=best
+        )
 
 
 if __name__ == '__main__':
@@ -324,10 +367,11 @@ if __name__ == '__main__':
     # run experiment
     run_experiment(config)
 
-    with open(
-        os.path.join('../experiments', config["name"], "fittest_individual.pkl"),
-        mode="rb"
-    ) as f_ind:
-        individual = pickle.load(f_ind)
+    for metric, metric_best in config["save_best_individual"]:
+        with open(
+            os.path.join('../experiments', config["name"], f"fittest_individual_{metric}.pkl"),
+            mode="rb"
+        ) as f_ind:
+            individual = pickle.load(f_ind)
 
-        show_run(individual=individual, enemies=[1, 2, 3, 4, 5, 6, 7, 8], config=config)
+            show_run(individual=individual, enemies=[1, 2, 3, 4, 5, 6, 7, 8], config=config)

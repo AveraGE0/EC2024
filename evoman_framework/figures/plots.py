@@ -7,6 +7,65 @@ from scipy.stats import ttest_ind
 import pickle
 
 
+def plot_population_metric(
+        logs: Logbook,
+        metric: str,
+        migration_interval: int,
+        chapter: str = "fitness",
+        ylog=False
+    ):
+    """ Plots some metric of the overall population for each generation.
+    
+    Args:
+        logs (Logbook): The DEAP logbook that contains overall stats.
+        metric (str): Metric that should be plotted (must be in logbook!).
+        migration_interval (str): Interval at which the migration happens. In the plot we will have
+                                  a red line at the corresponding generation numbers.
+        chapter (str): Chapter of the MultiStats from which the metric is taken.
+        ylog (bool): If true, will set y-axis to symlog scale.
+    """
+    # Extract overall population stats from the logbook
+    logs = logs.chapters[chapter]
+    generation = np.array(logs.select("gen"))
+    metric_values = np.array(logs.select(metric))
+
+    fig, ax = plt.subplots()
+
+    if metric_values.ndim == 1:
+        metric_values = np.expand_dims(metric_values, axis=1)
+
+    for i in range(metric_values.shape[1]):
+        ax.plot(generation, metric_values[:, i], label=f"Enemy {i+1} - {metric} {chapter}", markersize=8)
+
+
+    # Add vertical red lines to indicate migration events every 10 generations
+    for gen in range(0, len(set(generation)), migration_interval):
+        ax.axvline(
+            x=gen,
+            color='red',
+            linestyle=':',
+            label=f"Migration (every {migration_interval})" if gen == 0 else ""
+        )
+
+    # Customize the plot
+    ax.set_title(f"Overall {chapter} {metric} Over Generations with Migration Events")
+    ax.set_xlabel("Generations")
+    ax.set_ylabel(f"{chapter} {metric}")
+    ax.grid(True)
+    ax.legend(loc="best")
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_position(('outward', 0))
+    ax.spines['bottom'].set_position(('outward', 0))
+
+    if ylog:
+        ax.set_yscale('symlog')
+
+    # Adjust the layout
+    fig.tight_layout()
+    return fig
+
+
 def plot_island_metric(
         logs: Logbook,
         metric: str,
