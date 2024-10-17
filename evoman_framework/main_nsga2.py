@@ -19,12 +19,14 @@ from typing import List, Tuple, Dict
 # --------------------------
 
 def load_config(config_file='config_nsga2.yaml'):
+    """Load the configuration from a YAML file."""
+    if not os.path.exists(config_file):
+        raise FileNotFoundError(f"Configuration file '{config_file}' not found.")
     with open(config_file, 'r') as file:
         config = yaml.safe_load(file)
     return config
 
 config = load_config()
-
 
 # --------------------------
 # Setup Logging
@@ -36,6 +38,27 @@ def setup_logging(logging_config):
 setup_logging(config['logging'])
 
 logger = logging.getLogger('evolutionary_algorithm')
+
+def setup_logging_for_run(run_id, enemy_group):
+    """Set up a logger for a specific run and enemy group."""
+    logger_name = f'evolutionary_algorithm_run_{run_id}_group_{enemy_group}'
+    logger_instance = logging.getLogger(logger_name)
+    logger_instance.setLevel(logging.INFO)
+    # Add handlers if not already added
+    if not logger_instance.handlers:
+        # Console handler
+        ch = logging.StreamHandler(sys.stdout)
+        ch.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        ch.setFormatter(formatter)
+        logger_instance.addHandler(ch)
+        # File handler
+        log_filename = f'experiment_run_{run_id}_group_{enemy_group}.log'
+        fh = logging.FileHandler(log_filename)
+        fh.setLevel(logging.INFO)
+        fh.setFormatter(formatter)
+        logger_instance.addHandler(fh)
+    return logger_instance
 
 # --------------------------
 # Parameters from Config
@@ -60,8 +83,8 @@ cxpb = config['experiment']['cxpb']
 mutpb = config['experiment']['mutpb']
 tournament_size = config['experiment']['tournament_size']
 elitism_rate = config['experiment']['elitism_rate']
-evolutionary_algorithm = config['experiment']['evolutionary_algorithm']
 random_seed = config['experiment']['random_seed']
+selection_method = config['experiment']['selection_method']  # Use 'selection_method' instead
 
 parallel_enable = config['parallel']['enable']
 parallel_processes = config['parallel']['processes']
@@ -73,6 +96,27 @@ np.random.seed(random_seed)
 if not os.path.exists(experiment_name):
     os.makedirs(experiment_name)
 
+# Function to parse 'parallel_processes' parameter
+def parse_parallel_processes(processes_config, reserved_cores=0):
+    if isinstance(processes_config, int):
+        processes = processes_config
+    elif isinstance(processes_config, str):
+        if processes_config == 'max':
+            max_procs = cpu_count()
+            processes = max_procs - reserved_cores
+        else:
+            raise ValueError(f"Invalid processes config: {processes_config}")
+    else:
+        raise ValueError(f"Invalid processes config: {processes_config}")
+    if processes < 1:
+        raise ValueError(f"Number of processes ({processes}) must be at least 1.")
+    return processes
+
+# Retrieve 'reserved_cores' from the configuration
+reserved_cores = config['parallel'].get('reserved_cores', 0)
+
+# Parse the 'processes' parameter using the updated function
+parallel_processes = parse_parallel_processes(config['parallel']['processes'], reserved_cores)
 
 # --------------------------
 # DEAP Setup
@@ -87,8 +131,8 @@ def setup_deap():
         del creator.Individual
 
     # Weights: (1.0 for maximizing 100 - enemy_life, 1.0 for maximizing player_life, -1.0 for minimizing log(time))
-    creator.create("FitnessMulti", base.Fitness, weights=(1.0, 1.0, -1.0))
-    creator.create("Individual", list, fitness=creator.FitnessMulti)
+    creator.create("FitnessMulti", base.Fitness, weights=(1.0, 1.0, -1.0), force=True)
+    creator.create("Individual", list, fitness=creator.FitnessMulti, force=True)
 
     # Register attributes, individual, and population
     toolbox = base.Toolbox()
@@ -104,17 +148,20 @@ def setup_deap():
 
 def initialize_environment(experiment_name, enemies, multiplemode, n_hidden_neurons):
     """Initialize the Evoman environment."""
-    return Environment(
-        experiment_name=experiment_name,
-        enemies=enemies,
-        multiplemode=multiplemode,
-        playermode="ai",
-        player_controller=player_controller(n_hidden_neurons),
-        enemymode="static",
-        level=2,
-        speed="fastest"
-    )
-
+    try:
+        return Environment(
+            experiment_name=experiment_name,
+            enemies=enemies,
+            multiplemode=multiplemode,
+            playermode="ai",
+            player_controller=player_controller(n_hidden_neurons),
+            enemymode="static",
+            level=2,
+            speed="fastest"
+        )
+    except Exception as e:
+        logger.error(f"Failed to initialize environment: {e}")
+        sys.exit(1)
 
 # --------------------------
 # Evaluation Functions
@@ -123,40 +170,38 @@ def initialize_environment(experiment_name, enemies, multiplemode, n_hidden_neur
 def evaluate(individual, env):
     """Evaluate an individual against all enemies in the current group simultaneously."""
     # Play the game with the current individual's parameters
-    player_life, enemy_life, time = env.play(pcont=np.array(individual))
-
+    fitness, player_life, enemy_life, time = env.play(pcont=np.array(individual))
     # Return the three objectives:
     # 1. Maximize reduction in enemy_life (100 - enemy_life)
     # 2. Maximize player_life
     # 3. Minimize log(time)
-    return 100 - enemy_life, player_life, np.log(time + 1)
-
+    return 100 - enemy_life, player_life, np.log(time + 1),
 
 def evaluate_individual_on_single_enemies(individual, env):
-    def evaluate_individual_on_single_enemies(individual, env):
-        """Evaluate an individual against each enemy separately."""
-        results = {}
+    """Evaluate an individual against each enemy separately."""
+    results = {}
 
-        # Loop over each enemy (1 to 8)
-        for enemy_id in range(1, 9):
-            # Update the environment to evaluate the individual against the specific enemy
-            env.update_parameter('enemies', [enemy_id])
+    # Loop over each enemy (1 to 8)
+    for enemy_id in range(1, 9):
+        # Update the environment to evaluate the individual against the specific enemy
+        env.update_parameter('enemies', [enemy_id])
 
-            # Get player life, enemy life, and time for the current enemy
-            player_life, enemy_life, time = env.play(pcont=np.array(individual))
+        # Get fitness, player life, enemy life, and time for the current enemy
+        fitness, player_life, enemy_life, time = env.play(pcont=np.array(individual))
 
-            # Store the results for each enemy (multi-objective metrics)
-            results[f'enemy_{enemy_id}'] = {
-                'player_life': player_life,
-                'enemy_life': enemy_life,
-                'time': time,
-                'objectives': (100 - enemy_life, player_life, np.log(time + 1))  # The three objectives
-            }
+        fitness_of_individual = fitness_value(enemy_life, player_life, time)
 
-        return results
+        # Store the results for each enemy (multi-objective metrics)
+        results[f'enemy_{enemy_id}'] = {
+            'player_life': player_life,
+            'enemy_life': enemy_life,
+            'time': time,
+            'objectives': (100 - enemy_life, player_life, np.log(time + 1))  # The three objectives
+        }
+    return results
 
 def fitness_value(enemy_life: float, player_life: float, time: float) -> float:
-    """Calculate a  fitness score for comparison with other models."""
+    """Calculate a fitness score for comparison with other models."""
     return 0.9 * (100 - enemy_life) + 0.1 * player_life - np.log(time + 1)
 
 def calculate_population_diversity_euclidian(population: List) -> float:
@@ -203,30 +248,27 @@ def register_genetic_operators(toolbox):
     toolbox.register("evaluate", evaluate)
     toolbox.register("mate", tools.cxSimulatedBinaryBounded, low=-1.0, up=1.0, eta=15)
     toolbox.register("mutate", tools.mutPolynomialBounded, low=-1.0, up=1.0, eta=15, indpb=1.0 / num_weights)
-    toolbox.register("select", tools.selTournament, tournsize=tournament_size)
     # Register selection methods from the config file, you can choose there which option is applied
-    if evolutionary_algorithm == 'NSGA2':
+    selection_method_lower = selection_method.lower()  # Convert to lowercase for consistency
+    if selection_method_lower == 'nsga2':
         toolbox.register("select", tools.selNSGA2)
-    elif evolutionary_algorithm == 'Tournament':
+    elif selection_method_lower == 'tournament':
         toolbox.register("select", tools.selTournament, tournsize=tournament_size)
-    elif evolutionary_algorithm == 'DeterministicCrowding':
+    elif selection_method_lower == 'deterministiccrowding':
         toolbox.register("select", select_with_deterministic_crowding)
     else:
-        raise ValueError(f"Unknown selection method: {evolutionary_algorithm}")
+        raise ValueError(f"Unknown selection method: {selection_method}")
 
 # --------------------------
 # Deterministic Crowding Functions
 # --------------------------
 # Defined here since it isn't included standard in DEAP framework
 
-def select_with_deterministic_crowding(population, k):
+def select_with_deterministic_crowding(parents, offspring):
     """Perform deterministic crowding between parents and offspring."""
-    # Assuming population size equals k
-    # Adjust as needed based on your specific implementation
-    parents = population[:k]  # Example: first k individuals as parents
-    offspring = population[k:k*2]  # Next k individuals as offspring
     new_population = []
     for parent, child in zip(parents, offspring):
+        # Calculate Euclidean distance
         if euclidean_distance(parent, child) < 0.01:
             # If parent and child are similar, choose the one with better fitness
             if dominates(child.fitness.values, parent.fitness.values):
@@ -250,40 +292,21 @@ def euclidean_distance(ind1, ind2):
 # Logging Functions
 # --------------------------
 
-from typing import List, Tuple
-import numpy as np
-
-def log_generation_metrics(population: List, generation: int, logger_instance) -> Tuple[float, float]:
+def log_generation_metrics(population: List, generation: int, logger_instance) -> None:
+    """Log generation metrics including fitness values and diversity."""
     # Extract the fitness values of each individual
-    fitness_values = [ind.fitness.values for ind in population]
+    fitness_values = np.array([ind.fitness.values for ind in population])
 
-    # Calculate average, max, and min fitness using the fitness values
-    avg_fitness = np.mean(fitness_values)
-    max_fitness = np.max(fitness_values)
-    min_fitness = np.min(fitness_values)
-
-    # Calculate gain (player life - enemy life) for each individual using the correct values
-    gains = [player_life - enemy_life for enemy_life, player_life, _ in fitness_values]
-    avg_gain = np.mean(gains)
-    max_gain = np.max(gains)
-
-    # Calculate population standard deviation
-    population_std = calculate_population_std(population)
-
-    # Calculate population diversity using Euclidean distance
-    population_diversity = calculate_population_diversity_euclidian(population)
+    # Calculate average, max, and min fitness for each objective
+    avg_fitness = np.mean(fitness_values, axis=0)
+    max_fitness = np.max(fitness_values, axis=0)
+    min_fitness = np.min(fitness_values, axis=0)
 
     # Log the results for this generation
     logger_instance.info(
         f"Generation {generation}: "
-        f"Avg Fitness = {avg_fitness:.4f}, Max Fitness = {max_fitness:.4f}, Min Fitness = {min_fitness:.4f}, "
-        f"Avg Gain = {avg_gain:.4f}, Max Gain = {max_gain:.4f}, "
-        f"Std Dev = {population_std:.4f}, Diversity (Euclidean) = {population_diversity:.4f}"
+        f"Avg Fitness = {avg_fitness}, Max Fitness = {max_fitness}, Min Fitness = {min_fitness}"
     )
-
-    # Return average and max fitness for further use
-    return avg_fitness, max_fitness
-
 
 # --------------------------
 # Analysis Functions
@@ -308,11 +331,11 @@ def analyze_results(all_results, logger_instance):
     logger_instance.info(f"Best Solution Defeated: {max(defeated_enemies)} enemies")
     logger_instance.info(f"Highest Total Gain: {max(total_fitnesses):.2f}")
 
-
 # --------------------------
 # Evolutionary Algorithm
 # --------------------------
-def evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_instance):
+
+def run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_instance):
     """Perform the evolutionary algorithm for one enemy group."""
     group_name = f"run_{run_id}"
     logger_instance.info(f"Starting evolutionary run: {group_name} with Enemy Group: {enemy_group}")
@@ -325,13 +348,74 @@ def evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_insta
         ind.fitness.values = fit
 
     # Log initial metrics, including average and max fitness
-    log_generation_fitness(population, 0, logger_instance)  # Generation 0
+    log_generation_metrics(population, 0, logger_instance)  # Generation 0
 
     # Begin the evolution
     for gen in range(1, n_gen + 1):
-        # Selection
-        if evolutionary_algorithm == 'deterministic_crowding':
-            # Tournament selection
+        selection_method_lower = selection_method.lower()
+        if selection_method_lower == 'deterministiccrowding':
+            # Randomly shuffle population
+            random.shuffle(population)
+            # Apply variation to population to produce offspring
+            offspring = []
+            for parent1, parent2 in zip(population[::2], population[1::2]):
+                # Clone the individuals
+                child1, child2 = toolbox.clone(parent1), toolbox.clone(parent2)
+                # Apply crossover
+                if random.random() < cxpb:
+                    toolbox.mate(child1, child2)
+                # Apply mutation
+                toolbox.mutate(child1)
+                toolbox.mutate(child2)
+                # Remove fitness values
+                del child1.fitness.values
+                del child2.fitness.values
+                offspring.extend([child1, child2])
+
+            # Evaluate new individuals
+            invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+            fitnesses = toolbox.map(lambda ind: toolbox.evaluate(ind, train_env), invalid_ind)
+            for ind, fit in zip(invalid_ind, fitnesses):
+                ind.fitness.values = fit
+
+            # Perform deterministic crowding replacement
+            new_population = []
+            for parent1, parent2, child1, child2 in zip(population[::2], population[1::2], offspring[::2], offspring[1::2]):
+                # Calculate distances
+                d_p1_c1 = euclidean_distance(parent1, child1)
+                d_p1_c2 = euclidean_distance(parent1, child2)
+                d_p2_c1 = euclidean_distance(parent2, child1)
+                d_p2_c2 = euclidean_distance(parent2, child2)
+
+                # Assign offspring to parents based on distance
+                if (d_p1_c1 + d_p2_c2) <= (d_p1_c2 + d_p2_c1):
+                    pairs = [(parent1, child1), (parent2, child2)]
+                else:
+                    pairs = [(parent1, child2), (parent2, child1)]
+
+                for parent, child in pairs:
+                    # Select between parent and child
+                    if dominates(child.fitness.values, parent.fitness.values):
+                        new_population.append(child)
+                    else:
+                        new_population.append(parent)
+
+            population = new_population
+
+        elif selection_method_lower == 'nsga2':
+            # Apply variation (crossover and mutation)
+            offspring = algorithms.varAnd(population, toolbox, cxpb=cxpb, mutpb=mutpb)
+
+            # Evaluate new individuals
+            invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+            fitnesses = toolbox.map(lambda ind: toolbox.evaluate(ind, train_env), invalid_ind)
+            for ind, fit in zip(invalid_ind, fitnesses):
+                ind.fitness.values = fit
+
+            # Select the next generation population
+            population = toolbox.select(population + offspring, pop_size)
+        elif selection_method_lower == 'tournament':
+            # Select the next generation individuals
             offspring = toolbox.select(population, len(population))
             offspring = list(map(toolbox.clone, offspring))
 
@@ -347,38 +431,20 @@ def evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_insta
                     toolbox.mutate(mutant)
                     del mutant.fitness.values
 
-            # Evaluate new individuals
+            # Evaluate the individuals with invalid fitness
             invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
             fitnesses = toolbox.map(lambda ind: toolbox.evaluate(ind, train_env), invalid_ind)
             for ind, fit in zip(invalid_ind, fitnesses):
                 ind.fitness.values = fit
 
-            # Deterministic Crowding
-            population = select_with_deterministic_crowding(population, offspring)
-
-            # Elitism: keep best individuals
-            elite_size = int(elitism_rate * pop_size)
-            elites = tools.selBest(population, elite_size)
-            population = elites + population[:pop_size - elite_size]
-
-        elif evolutionary_algorithm == 'nsga2':
-            # Apply variation (crossover and mutation)
-            offspring = algorithms.varAnd(population, toolbox, cxpb=cxpb, mutpb=mutpb)
-
-            # Evaluate new individuals
-            invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-            fitnesses = toolbox.map(lambda ind: toolbox.evaluate(ind, train_env), invalid_ind)
-            for ind, fit in zip(invalid_ind, fitnesses):
-                ind.fitness.values = fit
-
-            # Select the next generation population
-            population = nsga2_selection(population + offspring, pop_size)
+            # The population is entirely replaced by the offspring
+            population[:] = offspring
         else:
-            logger_instance.error(f"Unknown evolutionary algorithm: {evolutionary_algorithm}")
+            logger_instance.error(f"Unknown selection method: {selection_method}")
             sys.exit(1)
 
         # Log metrics for this generation, including average and max fitness
-        log_generation_fitness(population, gen, logger_instance)  # Generation N
+        log_generation_metrics(population, gen, logger_instance)  # Generation N
 
     # Save the best individual
     best_individual = tools.selBest(population, k=1)[0]
@@ -386,7 +452,7 @@ def evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_insta
     np.savetxt(best_filename, best_individual)
     logger_instance.info(f"Best solution saved to {best_filename}")
 
-    return population, run_id
+    return population, best_individual, run_id
 
 # --------------------------
 # Main Function for Single Run
@@ -401,8 +467,14 @@ def single_run(run_id, enemy_group, config):
     toolbox = setup_deap()
     register_genetic_operators(toolbox)
 
+    # Disable parallelism inside single_run if batch processing is using multiprocessing
+    if multiple_runs > 1 and parallel_enable:
+        inner_parallel_enable = False
+    else:
+        inner_parallel_enable = parallel_enable
+
     # Setup parallel map if enabled
-    if parallel_enable:
+    if inner_parallel_enable:
         pool = Pool(processes=parallel_processes)
         toolbox.register("map", pool.map)
         logger_instance.info(f"Multiprocessing pool with {parallel_processes} processes initialized.")
@@ -418,15 +490,14 @@ def single_run(run_id, enemy_group, config):
     )
 
     # Execute evolutionary algorithm
-    population, run_id = evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_instance)
+    population, best_individual, run_id = run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_instance)
 
-    if parallel_enable:
+    if inner_parallel_enable:
         pool.close()
         pool.join()
         logger_instance.info("Multiprocessing pool closed.")
 
-    return population, run_id
-
+    return population, best_individual, run_id, enemy_group
 
 # --------------------------
 # Batch Processing for Multiple Runs
@@ -466,6 +537,7 @@ def batch_processing(config):
 # --------------------------
 # Test best individual
 # --------------------------
+
 def test_best_individual_against_all_enemies(best_individual, eval_env, logger_instance):
     """Test the best individual against all enemies and log results per enemy, including total gain."""
     results = evaluate_individual_on_single_enemies(best_individual, eval_env)
@@ -475,16 +547,12 @@ def test_best_individual_against_all_enemies(best_individual, eval_env, logger_i
     logger_instance.info(f"{'Enemy':<10} {'Player Life':<15} {'Enemy Life':<15} {'Gain':<10}")
 
     # Calculate total gain directly in the loop
-    total_gain = sum(
-        result['player_life'] - result['enemy_life']
-        for result in results.values()
-    )
-
-    # Log each enemy's result
+    total_gain = 0
     for enemy_id, result in results.items():
         player_life = result['player_life']
         enemy_life = result['enemy_life']
         gain = player_life - enemy_life
+        total_gain += gain
 
         # Log the results in a table format
         logger_instance.info(f"{enemy_id:<10} {player_life:<15} {enemy_life:<15} {gain:<10.4f}")
@@ -492,7 +560,51 @@ def test_best_individual_against_all_enemies(best_individual, eval_env, logger_i
     # Log the total gain
     logger_instance.info(f"\nTotal Gain: {total_gain:.4f}")
 
-    return total_gain
+    return results, total_gain
+
+# --------------------------
+# Helper Functions
+# --------------------------
+
+def evaluate_best_individuals(best_individuals, logger_instance):
+    """Evaluate best individuals against all enemies and collect results."""
+    eval_env = initialize_test_environment()
+
+    performance_table = []
+
+    for item in best_individuals:
+        population, best_individual, run_id, enemy_group = item
+        # Evaluate the best individual
+        results, total_gain = test_best_individual_against_all_enemies(best_individual, eval_env, logger_instance)
+        # Collect the results
+        performance_table.append({
+            'run_id': run_id,
+            'enemy_group': enemy_group,
+            'total_gain': total_gain,
+            'results': results,
+            'best_individual': best_individual
+        })
+
+    # Sort the performance_table based on total_gain
+    performance_table_sorted = sorted(performance_table, key=lambda x: x['total_gain'], reverse=True)
+
+    # Display the table
+    print("\nPerformance of Best Individuals from Each Run:")
+    print(f"{'Rank':<5} {'Run ID':<7} {'Enemy Group':<15} {'Total Gain':<10}")
+    for idx, entry in enumerate(performance_table_sorted):
+        print(f"{idx+1:<5} {entry['run_id']:<7} {entry['enemy_group']:<15} {entry['total_gain']:<10.4f}")
+
+    # Optionally return the sorted performance table
+    return performance_table_sorted
+
+def initialize_test_environment():
+    """Initialize the environment for testing the best individual against all enemies."""
+    return initialize_environment(
+        experiment_name,
+        list(range(1, 9)),  # Enemies 1 to 8
+        "no",  # Single mode
+        n_hidden_neurons
+    )
 
 # --------------------------
 # Main Function
@@ -500,16 +612,12 @@ def test_best_individual_against_all_enemies(best_individual, eval_env, logger_i
 
 def main():
     # Batch process to run multiple evolutionary runs
-    all_populations = batch_processing(config)
+    all_results = batch_processing(config)
 
-    # Find the best individual across all runs
-    best_individual = find_best_individual(all_populations)
+    # Now all_results is a list of (population, best_individual, run_id, enemy_group)
 
-    # Initialize evaluation environment
-    eval_env = initialize_test_environment()
-
-    # Test best individual and log results
-    total_gain = test_best_individual_against_all_enemies(best_individual, eval_env, logger)
+    # Evaluate the best individuals
+    performance_table = evaluate_best_individuals(all_results, logger)
 
     # Print relevant details to the console
     print(f"\nEvolution Summary:")
@@ -517,7 +625,7 @@ def main():
     print(f"Generations per Run: {config['experiment']['n_gen']}")
     print(f"Enemy Groups: {len(config['experiment']['enemy_groups'])} groups - {config['experiment']['enemy_groups']}")
     print(f"Total Runs: {config['parallel']['multiple_runs']}")
-    print(f"Total Gain of Best Individual: {total_gain:.4f}")
+    print(f"Best Overall Individual from Run {performance_table[0]['run_id']} with Total Gain: {performance_table[0]['total_gain']:.4f}")
     logger.info("Evolution complete. Results saved in the experiment directory.")
 
 if __name__ == "__main__":
