@@ -7,7 +7,7 @@ experiment:
   enemy_groups:
     - [1, 2, 3, 4]
     - [5, 6, 7, 8]
-  pop_size: 100
+  pop_size: 50
   n_gen: 20
   cxpb: 0.7
   mutpb: 0.05
@@ -15,6 +15,12 @@ experiment:
   elitism_rate: 0.05
   evolutionary_algorithm: 'nsga2'  # Options: 'deterministic_crowding', 'nsga2'
   random_seed: 42
+  selection_method: 'NSGA2'  # Options: 'NSGA2', 'Tournament', 'DeterministicCrowding'
+
+parallel:
+  enable: true
+  processes: 'max-2'  # Number of parallel processes for evaluations
+  multiple_runs: 2  # Number of independent evolutionary runs
 
 logging:
   version: 1
@@ -41,7 +47,3 @@ logging:
     level: INFO
     handlers: [console]
 
-parallel:
-  enable: true
-  processes: 4  # Number of parallel processes for evaluations
-  multiple_runs: 2  # Number of independent evolutionary runs
