@@ -1,4 +1,3 @@
-# evolutionary_algorithm.py
 
 import numpy as np
 import random
@@ -28,6 +27,15 @@ def load_config(config_file='config_nsga2.yaml'):
 
 config = load_config()
 
+# Ensure the experiment directory exists
+def create_experiment_directory(experiment_name):
+    """Create a directory for the experiment if it doesn't already exist."""
+    if not os.path.exists(experiment_name):
+        os.makedirs(experiment_name)
+    return experiment_name
+
+
+
 # --------------------------
 # Setup Logging
 # --------------------------
@@ -39,8 +47,8 @@ setup_logging(config['logging'])
 
 logger = logging.getLogger('evolutionary_algorithm')
 
-def setup_logging_for_run(run_id, enemy_group):
-    """Set up a logger for a specific run and enemy group."""
+def setup_logging_for_run(run_id, enemy_group, experiment_directory):
+    """Set up a logger for a specific run and enemy group, saving logs in the experiment directory."""
     logger_name = f'evolutionary_algorithm_run_{run_id}_group_{enemy_group}'
     logger_instance = logging.getLogger(logger_name)
     logger_instance.setLevel(logging.INFO)
@@ -53,7 +61,7 @@ def setup_logging_for_run(run_id, enemy_group):
         ch.setFormatter(formatter)
         logger_instance.addHandler(ch)
         # File handler
-        log_filename = f'experiment_run_{run_id}_group_{enemy_group}.log'
+        log_filename = os.path.join(experiment_directory, f'experiment_run_{run_id}_group_{enemy_group}.log')
         fh = logging.FileHandler(log_filename)
         fh.setLevel(logging.INFO)
         fh.setFormatter(formatter)
@@ -335,7 +343,7 @@ def analyze_results(all_results, logger_instance):
 # Evolutionary Algorithm
 # --------------------------
 
-def run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_instance):
+def run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_instance, experiment_directory):
     """Perform the evolutionary algorithm for one enemy group."""
     group_name = f"run_{run_id}"
     logger_instance.info(f"Starting evolutionary run: {group_name} with Enemy Group: {enemy_group}")
@@ -353,6 +361,7 @@ def run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_i
     # Begin the evolution
     for gen in range(1, n_gen + 1):
         selection_method_lower = selection_method.lower()
+
         if selection_method_lower == 'deterministiccrowding':
             # Randomly shuffle population
             random.shuffle(population)
@@ -414,6 +423,7 @@ def run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_i
 
             # Select the next generation population
             population = toolbox.select(population + offspring, pop_size)
+
         elif selection_method_lower == 'tournament':
             # Select the next generation individuals
             offspring = toolbox.select(population, len(population))
@@ -439,6 +449,7 @@ def run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_i
 
             # The population is entirely replaced by the offspring
             population[:] = offspring
+
         else:
             logger_instance.error(f"Unknown selection method: {selection_method}")
             sys.exit(1)
@@ -448,7 +459,7 @@ def run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_i
 
     # Save the best individual
     best_individual = tools.selBest(population, k=1)[0]
-    best_filename = os.path.join(experiment_name, f'best_solution_{group_name}.txt')
+    best_filename = os.path.join(experiment_directory, f'best_solution_{group_name}.txt')
     np.savetxt(best_filename, best_individual)
     logger_instance.info(f"Best solution saved to {best_filename}")
 
@@ -458,10 +469,10 @@ def run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_i
 # Main Function for Single Run
 # --------------------------
 
-def single_run(run_id, enemy_group, config):
+def single_run(run_id, enemy_group, config, experiment_directory):
     """Function to execute a single evolutionary run."""
     # Set up logger for this run and group
-    logger_instance = setup_logging_for_run(run_id, enemy_group)
+    logger_instance = setup_logging_for_run(run_id, enemy_group, experiment_directory)
 
     # Setup DEAP toolbox
     toolbox = setup_deap()
@@ -490,7 +501,7 @@ def single_run(run_id, enemy_group, config):
     )
 
     # Execute evolutionary algorithm
-    population, best_individual, run_id = run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_instance)
+    population, best_individual, run_id = run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_instance, experiment_directory)
 
     if inner_parallel_enable:
         pool.close()
@@ -503,7 +514,7 @@ def single_run(run_id, enemy_group, config):
 # Batch Processing for Multiple Runs
 # --------------------------
 
-def batch_processing(config):
+def batch_processing(config, experiment_directory):
     """Run multiple independent evolutionary runs in parallel."""
     logger.info(f"Starting batch processing with {multiple_runs} runs.")
     run_ids = list(range(1, multiple_runs + 1))
@@ -515,7 +526,7 @@ def batch_processing(config):
     for run_id in run_ids:
         for enemy_group in enemy_groups:
             # Append tasks for each run and group
-            tasks.append((run_id, enemy_group, config))
+            tasks.append((run_id, enemy_group, config, experiment_directory))
 
     if parallel_enable and multiple_runs > 1:
         pool = Pool(processes=parallel_processes)
@@ -567,7 +578,7 @@ def test_best_individual_against_all_enemies(best_individual, eval_env, logger_i
 # --------------------------
 
 def evaluate_best_individuals(best_individuals, logger_instance):
-    """Evaluate best individuals against all enemies and collect results."""
+    """Evaluate best individuals against all enemies and collect detailed statistics."""
     eval_env = initialize_test_environment()
 
     performance_table = []
@@ -576,25 +587,36 @@ def evaluate_best_individuals(best_individuals, logger_instance):
         population, best_individual, run_id, enemy_group = item
         # Evaluate the best individual
         results, total_gain = test_best_individual_against_all_enemies(best_individual, eval_env, logger_instance)
-        # Collect the results
+
+        # Calculate additional statistics
+        total_defeated_enemies = sum(1 for result in results.values() if result['enemy_life'] == 0)
+        total_player_life = sum(result['player_life'] for result in results.values())
+        total_enemy_life = sum(result['enemy_life'] for result in results.values())
+
+        # Collect detailed results for flexibility
         performance_table.append({
             'run_id': run_id,
             'enemy_group': enemy_group,
             'total_gain': total_gain,
-            'results': results,
+            'total_defeated_enemies': total_defeated_enemies,
+            'total_player_life': total_player_life,
+            'total_enemy_life': total_enemy_life,
+            'results': results,  # Detailed results per enemy
             'best_individual': best_individual
         })
 
     # Sort the performance_table based on total_gain
     performance_table_sorted = sorted(performance_table, key=lambda x: x['total_gain'], reverse=True)
 
-    # Display the table
+    # Display summary statistics in a table
     print("\nPerformance of Best Individuals from Each Run:")
-    print(f"{'Rank':<5} {'Run ID':<7} {'Enemy Group':<15} {'Total Gain':<10}")
+    print(f"{'Rank':<5} {'Run ID':<7} {'Enemy Group':<15} {'Total Gain':<10} {'Defeated Enemies':<18} {'Player Life':<12} {'Enemy Life':<12}")
     for idx, entry in enumerate(performance_table_sorted):
-        print(f"{idx+1:<5} {entry['run_id']:<7} {entry['enemy_group']:<15} {entry['total_gain']:<10.4f}")
+        # Convert enemy_group list to a formatted string
+        enemy_group_str = ', '.join(map(str, entry['enemy_group']))
+        print(f"{idx+1:<5} {entry['run_id']:<7} {enemy_group_str:<15} {entry['total_gain']:<10.4f} {entry['total_defeated_enemies']:<18} {entry['total_player_life']:<12.4f} {entry['total_enemy_life']:<12.4f}")
 
-    # Optionally return the sorted performance table
+    # Optionally return the sorted performance table for further manipulation
     return performance_table_sorted
 
 def initialize_test_environment():
@@ -611,10 +633,22 @@ def initialize_test_environment():
 # --------------------------
 
 def main():
-    # Batch process to run multiple evolutionary runs
-    all_results = batch_processing(config)
+    # Load the config
+    config = load_config()  # This only returns the config
 
-    # Now all_results is a list of (population, best_individual, run_id, enemy_group)
+    # Retrieve the experiment name from the config
+    experiment_name = config['experiment']['name']
+
+    # Create the experiment directory if it doesn't exist
+    experiment_directory = create_experiment_directory(experiment_name)
+
+    # Setup logging
+    setup_logging(config['logging'])
+    logger = logging.getLogger('evolutionary_algorithm')
+    logger.info(f"Starting the experiment: {experiment_name}")
+
+    # Batch process to run multiple evolutionary runs
+    all_results = batch_processing(config, experiment_directory)
 
     # Evaluate the best individuals
     performance_table = evaluate_best_individuals(all_results, logger)
@@ -625,8 +659,15 @@ def main():
     print(f"Generations per Run: {config['experiment']['n_gen']}")
     print(f"Enemy Groups: {len(config['experiment']['enemy_groups'])} groups - {config['experiment']['enemy_groups']}")
     print(f"Total Runs: {config['parallel']['multiple_runs']}")
-    print(f"Best Overall Individual from Run {performance_table[0]['run_id']} with Total Gain: {performance_table[0]['total_gain']:.4f}")
+    print(
+        f"Best Overall Individual from Run {performance_table[0]['run_id']} with Total Gain: {performance_table[0]['total_gain']:.4f}")
+
     logger.info("Evolution complete. Results saved in the experiment directory.")
+
+
+if __name__ == "__main__":
+    main()
+
 
 if __name__ == "__main__":
     main()
