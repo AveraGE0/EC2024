@@ -13,6 +13,7 @@ experiment:
   mutpb: 0.05
   tournament_size: 3
   elitism_rate: 0.05
+  random_seed_for_reproduction: on
   random_seed: 42
   selection_method: 'NSGA2'  # Options: 'NSGA2', 'Tournament', 'DeterministicCrowding'
 

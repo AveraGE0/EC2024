@@ -99,8 +99,9 @@ parallel_enable = config['parallel']['enable']
 parallel_processes = config['parallel']['processes']
 multiple_runs = config['parallel']['multiple_runs']
 
-random.seed(random_seed)
-np.random.seed(random_seed)
+# uncomment if you want to obtain the same results for each run
+# random.seed(random_seed)
+# np.random.seed(random_seed)
 
 if not os.path.exists(experiment_name):
     os.makedirs(experiment_name)
@@ -615,10 +616,15 @@ def aggregate_metrics(experiment_directory, enemy_groups, multiple_runs, num_gen
 # Main Function for Single Run
 # --------------------------
 
-def single_run(run_id, enemy_group, config, experiment_directory):
+def single_run(run_id, enemy_group, config, experiment_directory, seed):
     """Function to execute a single evolutionary run."""
     # Set up logger for this run and group
     logger_instance = setup_logging_for_run(run_id, enemy_group, experiment_directory)
+
+    # Assign the provided seed for this run
+    unique_seed = seed
+    random.seed(unique_seed)
+    np.random.seed(unique_seed)
 
     # Setup DEAP toolbox
     toolbox = setup_deap()
@@ -665,19 +671,23 @@ def batch_processing(config, experiment_directory):
     logger.info(f"Starting batch processing with {multiple_runs} runs.")
     run_ids = list(range(1, multiple_runs + 1))
 
+    # Generate seeds dynamically: base_seed + run_id
+    base_seed = config['experiment']['random_seed']
+    seeds = [base_seed + run_id for run_id in run_ids]
+
     results = []
 
     # Iterate over each run and enemy group
     tasks = []
-    for run_id in run_ids:
+    for run_id, seed in zip(run_ids, seeds):
         for enemy_group in enemy_groups:
-            # Append tasks for each run and group
-            tasks.append((run_id, enemy_group, config, experiment_directory))
+            # Append tasks with run_id and seed
+            tasks.append((run_id, enemy_group, config, experiment_directory, seed))
 
     if parallel_enable and multiple_runs > 1:
         pool = Pool(processes=parallel_processes)
 
-        # Run all tasks in parallel using pool.starmap
+        # Modify single_run to accept seed
         results = pool.starmap(single_run, tasks)
 
         pool.close()
@@ -685,7 +695,7 @@ def batch_processing(config, experiment_directory):
     else:
         # Non-parallel execution
         for task in tasks:
-            result = single_run(*task)  # Unpack the run_id, enemy_group, and config
+            result = single_run(*task)  # Unpack the run_id, enemy_group, config, and seed
             results.append(result)
 
     logger.info("Batch processing complete.")
