@@ -5,10 +5,10 @@ experiment:
   num_outputs: 5
   n_hidden_neurons: 10
   enemy_groups:
-    - [1, 2, 6, 7]
-    - [2, 4, 5, 7, 8]
-  pop_size: 50
-  n_gen: 20
+    - [1, 2, 3, 4]
+    - [1, 2, 3, 4, 5, 6, 7, 8]
+  pop_size: 400
+  n_gen: 350
   cxpb: 0.7
   mutpb: 0.05
   tournament_size: 3
@@ -22,7 +22,7 @@ parallel:
   enable: true
   processes: 'max'  # Number of parallel processes for evaluations
   reserved_cores: 2 # Number of reserved cores for your pc to run
-  multiple_runs: 2  # Number of independent evolutionary runs
+  multiple_runs: 10  # Number of independent evolutionary runs
 
 logging:
   version: 1
