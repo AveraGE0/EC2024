@@ -49,7 +49,8 @@ logger = logging.getLogger('evolutionary_algorithm')
 
 def setup_logging_for_run(run_id, enemy_group, experiment_directory):
     """Set up a logger for a specific run and enemy group, saving logs in the experiment directory."""
-    logger_name = f'evolutionary_algorithm_run_{run_id}_group_{enemy_group}'
+    enemy_group_str = '_'.join(map(str, enemy_group))
+    logger_name = f'evolutionary_algorithm_run_{run_id}_group_{enemy_group_str}'
     logger_instance = logging.getLogger(logger_name)
     logger_instance.setLevel(logging.INFO)
     # Add handlers if not already added
@@ -300,21 +301,88 @@ def euclidean_distance(ind1, ind2):
 # Logging Functions
 # --------------------------
 
-def log_generation_metrics(population: List, generation: int, logger_instance) -> None:
-    """Log generation metrics including fitness values and diversity."""
-    # Extract the fitness values of each individual
-    fitness_values = np.array([ind.fitness.values for ind in population])
+def log_generation_metrics(population: List, generation: int, logger_instance, experiment_directory, run_id,
+                           enemy_group) -> None:
+    """
+    Log generation metrics including scalar fitness values and diversity.
 
-    # Calculate average, max, and min fitness for each objective
-    avg_fitness = np.mean(fitness_values, axis=0)
-    max_fitness = np.max(fitness_values, axis=0)
-    min_fitness = np.min(fitness_values, axis=0)
+    Parameters:
+    - population: List of individuals in the current population.
+    - generation: Current generation number.
+    - logger_instance: Logger object for logging information.
+    - experiment_directory: Directory where experiment data is stored.
+    - run_id: Identifier for the current run.
+    - enemy_group: List representing the current enemy group.
+    """
+
+    # Define the scalar fitness formula
+    def calculate_scalar_fitness(individual_fitness):
+        """
+        Calculate scalar fitness based on the formula:
+        fitness = (100 - enemy_life) + player_life - log(t)
+
+        Parameters:
+        - individual_fitness: Tuple containing (100 - enemy_life, player_life, log(t + 1))
+
+        Returns:
+        - Scalar fitness value as a float.
+        """
+        enemy_life_component = individual_fitness[0]  # 100 - enemy_life
+        player_life = individual_fitness[1]  # player_life
+        log_time = individual_fitness[2]  # log(t + 1)
+        return enemy_life_component + player_life - log_time
+
+    # Calculate scalar fitness for each individual
+    scalar_fitness_values = [calculate_scalar_fitness(ind.fitness.values) for ind in population]
+
+    # Calculate average and maximum scalar fitness
+    avg_fitness = np.mean(scalar_fitness_values)
+    max_fitness = np.max(scalar_fitness_values)
 
     # Log the results for this generation
     logger_instance.info(
-        f"Generation {generation}: "
-        f"Avg Fitness = {avg_fitness}, Max Fitness = {max_fitness}, Min Fitness = {min_fitness}"
+        f"Generation {generation}: Avg Scalar Fitness = {avg_fitness:.4f}, Max Scalar Fitness = {max_fitness:.4f}"
     )
+
+    # Optionally, store the metrics to a CSV file for later aggregation
+    store_generation_metrics(run_id, enemy_group, generation, avg_fitness, max_fitness, experiment_directory)
+
+
+def store_generation_metrics(run_id, enemy_group, generation, avg_fitness, max_fitness, experiment_directory):
+    """
+    Store generation metrics to a CSV file.
+
+    Parameters:
+    - run_id: Identifier for the current run.
+    - enemy_group: List representing the current enemy group.
+    - generation: Current generation number.
+    - avg_fitness: Average scalar fitness of the population.
+    - max_fitness: Maximum scalar fitness in the population.
+    - experiment_directory: Directory where experiment data is stored.
+    """
+    import os
+    import csv
+
+    # Create a unique filename based on run ID and enemy group
+    enemy_group_str = '_'.join(map(str, enemy_group))
+    metrics_filename = os.path.join(experiment_directory, f'metrics_run_{run_id}_group_{enemy_group_str}.csv')
+
+    # Check if the file exists; if not, write the header
+    file_exists = os.path.isfile(metrics_filename)
+    with open(metrics_filename, 'a', newline='') as csvfile:
+        fieldnames = ['Generation', 'Avg_Scalar_Fitness', 'Max_Scalar_Fitness']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+        if not file_exists:
+            writer.writeheader()
+
+        # Write the current generation's metrics
+        writer.writerow({
+            'Generation': generation,
+            'Avg_Scalar_Fitness': f"{avg_fitness:.4f}",
+            'Max_Scalar_Fitness': f"{max_fitness:.4f}"
+        })
+
 
 # --------------------------
 # Analysis Functions
@@ -356,7 +424,7 @@ def run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_i
         ind.fitness.values = fit
 
     # Log initial metrics, including average and max fitness
-    log_generation_metrics(population, 0, logger_instance)  # Generation 0
+    log_generation_metrics(population, 0, logger_instance, experiment_directory, run_id, enemy_group)  # Generation 0
 
     # Begin the evolution
     for gen in range(1, n_gen + 1):
@@ -455,7 +523,7 @@ def run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_i
             sys.exit(1)
 
         # Log metrics for this generation, including average and max fitness
-        log_generation_metrics(population, gen, logger_instance)  # Generation N
+        log_generation_metrics(population, gen, logger_instance, experiment_directory, run_id, enemy_group)  # Generation N
 
     # Save the best individual
     best_individual = tools.selBest(population, k=1)[0]
@@ -464,6 +532,84 @@ def run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_i
     logger_instance.info(f"Best solution saved to {best_filename}")
 
     return population, best_individual, run_id
+
+
+import os
+import csv
+import numpy as np
+
+
+def aggregate_metrics(experiment_directory, enemy_groups, multiple_runs, num_generations):
+    """
+    Aggregate mean and max scalar fitness metrics across multiple runs for each enemy group.
+
+    Parameters:
+    - experiment_directory: Directory where experiment data is stored.
+    - enemy_groups: List of enemy groups.
+    - multiple_runs: Number of independent evolutionary runs.
+    - num_generations: Total number of generations per run.
+
+    Returns:
+    - A dictionary structured as:
+      {
+          enemy_group_tuple: {
+              'mean_fitness_mean': np.array([...]),
+              'mean_fitness_std': np.array([...]),
+              'max_fitness_mean': np.array([...]),
+              'max_fitness_std': np.array([...])
+          },
+          ...
+      }
+    """
+    aggregated_data = {}
+
+    for group in enemy_groups:
+        group_tuple = tuple(group)
+        aggregated_data[group_tuple] = {
+            'mean_fitness_runs': [],
+            'max_fitness_runs': []
+        }
+
+        for run_id in range(1, multiple_runs + 1):
+            group_str = '_'.join(map(str, group))
+            metrics_filename = os.path.join(experiment_directory, f'metrics_run_{run_id}_group_{group_str}.csv')
+
+            if not os.path.isfile(metrics_filename):
+                print(f"Metrics file {metrics_filename} not found. Skipping run {run_id} for group {group_str}.")
+                continue
+
+            # Read the CSV file
+            with open(metrics_filename, 'r') as csvfile:
+                reader = csv.DictReader(csvfile)
+                run_mean_fitness = []
+                run_max_fitness = []
+                for row in reader:
+                    generation = int(row['Generation'])
+                    if generation > num_generations:
+                        continue
+                    run_mean_fitness.append(float(row['Avg_Scalar_Fitness']))
+                    run_max_fitness.append(float(row['Max_Scalar_Fitness']))
+
+            # Ensure the run has data for all generations
+            if len(run_mean_fitness) != num_generations + 1:
+                print(
+                    f"Incomplete data in {metrics_filename}. Expected {num_generations + 1} generations, got {len(run_mean_fitness)}.")
+                continue
+
+            aggregated_data[group_tuple]['mean_fitness_runs'].append(run_mean_fitness)
+            aggregated_data[group_tuple]['max_fitness_runs'].append(run_max_fitness)
+
+        # Convert lists to NumPy arrays for statistical computations
+        mean_fitness_runs = np.array(aggregated_data[group_tuple]['mean_fitness_runs'])
+        max_fitness_runs = np.array(aggregated_data[group_tuple]['max_fitness_runs'])
+
+        # Compute mean and std deviation across runs for each generation
+        aggregated_data[group_tuple]['mean_fitness_mean'] = np.mean(mean_fitness_runs, axis=0)
+        aggregated_data[group_tuple]['mean_fitness_std'] = np.std(mean_fitness_runs, axis=0)
+        aggregated_data[group_tuple]['max_fitness_mean'] = np.mean(max_fitness_runs, axis=0)
+        aggregated_data[group_tuple]['max_fitness_std'] = np.std(max_fitness_runs, axis=0)
+
+    return aggregated_data
 
 # --------------------------
 # Main Function for Single Run
@@ -663,10 +809,6 @@ def main():
         f"Best Overall Individual from Run {performance_table[0]['run_id']} with Total Gain: {performance_table[0]['total_gain']:.4f}")
 
     logger.info("Evolution complete. Results saved in the experiment directory.")
-
-
-if __name__ == "__main__":
-    main()
 
 
 if __name__ == "__main__":
