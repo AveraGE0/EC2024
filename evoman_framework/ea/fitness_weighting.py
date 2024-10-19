@@ -148,8 +148,8 @@ class FitnessProportionalWeighting(FitnessWeighting):
         fitness_avg = metrics["fitnesses"]
         # squared_avg = fitness_avg * fitness_avg
         #current_weight = (1 - fitness_avg / 100)**2
-        #current_weight = 0.5 * (1 - fitness_avg / 100) + 0.5 * (1 - fitness_avg / 100)**2
-        current_weight = 1 - ((fitness_avg - fitness_avg.min()) / (fitness_avg.max() - fitness_avg.min()))
+        current_weight = 0.5 * (1 - fitness_avg / 100) + 0.5 * (1 - fitness_avg / 100)**2
+        #current_weight = 1 - ((fitness_avg - fitness_avg.min()) / (fitness_avg.max() - fitness_avg.min()))
         current_step_size = self.step_decay_func(progress)
         self.weights = (1 - current_step_size) * self.weights + current_step_size * current_weight
         self.weights = np.clip(self.weights, self.min_weight, self.max_weight)

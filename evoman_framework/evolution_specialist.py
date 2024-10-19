@@ -9,7 +9,7 @@ from deap import base, creator, tools
 from evoman.environment import Environment
 from neural_controller import NeuralController
 from naming import get_timed_name
-from plots import plot_stats
+from figures.plots import plot_stats
 from visualize import show_run
 from diversity_metrics import euclidean_distance, hamming_distance, fitness_sharing
 

@@ -19,6 +19,7 @@ def create_population_stats() -> tools.MultiStatistics:
     raw_fitness_stats.register("avg", np.mean, axis=0)
     raw_fitness_stats.register("std", np.std, axis=0)
     raw_fitness_stats.register("max", np.max, axis=0)
+    raw_fitness_stats.register("max_ind", lambda x: np.max(np.mean(x, axis=1)))
 
     gain_stats = tools.Statistics(key=lambda ind: ind.multi_gain)
     gain_stats.register("avg_sum", np.mean)
@@ -40,6 +41,11 @@ def create_population_stats() -> tools.MultiStatistics:
     enemies_defeated_stats.register("avg_def", np.mean, axis=0)
     enemies_defeated_stats.register("is_def", np.max, axis=0)
 
+    # Register custom diversity statistics on the genotypes
+    diversity_stats = tools.Statistics()
+    diversity_stats.register("euclidean_avg", mean_euclidean_distance)
+    diversity_stats.register("hamming", mean_hamming_distance)
+
     return tools.MultiStatistics(
         fitness=fitness_stats,
         fitnesses=raw_fitness_stats,
@@ -47,7 +53,8 @@ def create_population_stats() -> tools.MultiStatistics:
         defeated=defeated_stats,
         life=life_stats,
         time=time_stats,
-        enemies=enemies_defeated_stats
+        enemies=enemies_defeated_stats,
+        diversity_stats=diversity_stats
     )
 
 

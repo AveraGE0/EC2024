@@ -188,6 +188,11 @@ def evolution(
         # display stats above progress bar
         tqdm.write(logbook.stream)
 
+
+        # plots only every plot_interval generations
+        if (current_gen + 1) % config["plot_interval"] != 0:
+            continue
+
         for chapter, metric, plot_name in config["island_plots"]:
             fig = plot_island_metric(
                 island_logbook,
@@ -369,7 +374,7 @@ if __name__ == '__main__':
 
     for metric, metric_best in config["save_best_individual"]:
         with open(
-            os.path.join('../experiments', config["name"], f"fittest_individual_{metric}.pkl"),
+            os.path.join('../experiments', config["name"], f"best_individual_{metric}.pkl"),
             mode="rb"
         ) as f_ind:
             individual = pickle.load(f_ind)
