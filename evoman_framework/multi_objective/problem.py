@@ -1,12 +1,13 @@
 import numpy as np
 from pymoo.core.problem import Problem
 from parallel_environment import ParallelEnvironment
+from competition_metrics import multi_gain, defeated_enemies
 
 
-class MyProblem(Problem):
+class GeneralistProblem(Problem):
 
-    def __init__(self, par_environment: ParallelEnvironment, individual_size=265):
-        super().__init__(n_var=265, n_obj=8, n_ieq_constr=0, xl=-10, xu=10)
+    def __init__(self, par_environment: ParallelEnvironment, individual_size=265, n_obj=8):
+        super().__init__(n_var=265, n_obj=n_obj, n_ieq_constr=0, xl=-10, xu=10)
         self.indidvidual_size = individual_size
         self.weight_bounds = (-10, 10)
         self.par_environment = par_environment
@@ -20,4 +21,6 @@ class MyProblem(Problem):
         """
         results_dict = self.par_environment.get_results(x)
         results = np.array([-res["fitness"] for res in results_dict])
+        defeated = np.array([defeated_enemies(res["enemy_life"]) for res in results_dict])
         out["F"] = results
+        out["def"] = defeated

@@ -3,7 +3,7 @@ from pymoo.util.display.column import Column
 from pymoo.util.display.output import Output
 
 
-class MyOutput(Output):
+class CustomOutput(Output):
 
     def __init__(self):
         super().__init__()

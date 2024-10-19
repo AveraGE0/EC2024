@@ -3,9 +3,13 @@ import numpy as np
 from pymoo.core.sampling import Sampling
 
 
-class MySampling(Sampling):
+class RandomSampling(Sampling):
+    def __init__(self, lower: float, upper: float):
+        super().__init__()
+        self.lower = lower
+        self.upper = upper
     def _do(self, problem, n_samples, **kwargs):
-        return np.random.uniform(-1, 1, size=(n_samples, 265))
+        return np.random.uniform(self.lower, self.upper, size=(n_samples, 265))
 
 
 class PreTrainedPopulation(Sampling):
