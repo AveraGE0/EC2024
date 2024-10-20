@@ -84,7 +84,7 @@ for enemy_group in enemy_groups:
         gains_per_run.append(gains)
 
     # Now, write the gains into a CSV file specific to the enemy group
-    csv_filename = f'gains_{group_name}.csv'
+    csv_filename = os.path.join(experiment_directory, f'gains_{group_name}.csv')
     with open(csv_filename, mode='w', newline='') as csv_file:
         # Define the fieldnames as 'Enemy 1' to 'Enemy 8'
         fieldnames = [f'Enemy {i}' for i in range(1, 9)]
