@@ -5,13 +5,17 @@ import time
 from multi_objective.output import CustomOutput
 from parallel_environment import ParallelEnvironment
 import pickle
+import random
 
 from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.algorithms.moo.sms import SMSEMOA
 from pymoo.optimize import minimize
+from pymoo.operators.crossover.sbx import SBX
+from pymoo.operators.mutation.pm import PolynomialMutation
 
 from multi_objective.problem import GeneralistProblem
 from multi_objective.sampling import RandomSampling, PreTrainedPopulation
+from multi_objective.mutation import PMGlobalLocalProb
 from pymoo.visualization.scatter import Scatter
 
 from ea.fitness_functions import default_fitness
@@ -36,21 +40,37 @@ def run_experiment(config: dict):
     par_env = ParallelEnvironment(config["n_processes"], config, default_fitness)
     par_env.start_processes()
 
+    random.seed(config["seed"])
+    np.random.seed(config["seed"])
+
+    polynomial_mutation = PMGlobalLocalProb(
+        individual_mutation_prob=config["p_mutation"],
+        gene_mutation_prob=config["polynomial_indpb"],
+        eta=config["polynomial_eta"]
+    )
+
     nsga2 = NSGA2(
         pop_size=config["population_size"],
+        crossover = SBX(prob=config["p_crossover"], eta=config["SBX_eta"]),
+        mutation = polynomial_mutation,
         sampling=RandomSampling(lower=config["init_low"], upper=config["init_up"]),
     )
 
     # Instantiate the callback
     callback = RecordCallback()
 
-    generalist = GeneralistProblem(par_env, n_obj=len(config["train_enemy"]))
+    generalist = GeneralistProblem(
+        par_env,
+        n_obj=len(config["train_enemy"]),
+        allele_lower_bound=config["allele_lower_limit"],
+        allele_upper_bound=config["allele_upper_limit"]
+    )
 
     res = minimize(
         generalist,
         nsga2,
         ('n_gen', config["generations"]),
-        seed=42,
+        seed=config["seed"],
         output=CustomOutput(),
         verbose=True,
         callback=callback
