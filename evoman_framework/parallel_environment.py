@@ -54,8 +54,20 @@ class ParallelEnvironment:
     def stop_processes(self) -> None:
         """Terminates all processes previously created"""
         for process in self.processes:
-            process.terminate()
+            if process.is_alive():
+                try:
+                    # Attempt to terminate the process gracefully
+                    process.terminate()
 
+                    # Wait for the process to terminate with a timeout
+                    process.join(timeout=5)  # Adjust the timeout as needed
+
+                    if process.is_alive():
+                        # If the process is still alive after timeout, forcefully terminate it
+                        print(f"Process {process.pid} did not terminate in time. Forcefully killing it.")
+                        process.kill()
+                except Exception as e:
+                    print(f"Error terminating process {process.pid}: {e}")
         print("Closed all subprocesses successfully.")
 
     def get_results(self, population: list) -> list:
