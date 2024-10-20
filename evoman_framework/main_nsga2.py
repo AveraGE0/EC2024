@@ -187,8 +187,20 @@ def evaluate(individual, env):
     # 3. Minimize log(time)
     return 100 - enemy_life, player_life, np.log(time + 1),
 
-def evaluate_individual_on_single_enemies(individual, env):
-    """Evaluate an individual against each enemy separately."""
+from typing import Dict, Any, List
+import numpy as np
+
+def evaluate_individual_on_single_enemies(individual: List[float], env: Any) -> Dict[str, Dict[str, Any]]:
+    """Evaluate an individual against each enemy separately.
+
+    Args:
+        individual (List[float]): A list representing the individual's genome.
+        env (Any): The environment in which to evaluate the individual. Must have `update_parameter` and `play` methods.
+
+    Returns:
+        Dict[str, Dict[str, Any]]: A dictionary where each key represents an enemy and maps to a dictionary
+                                   of metrics like player life, enemy life, time, and objectives.
+    """
     results = {}
 
     # Loop over each enemy (1 to 8)
@@ -199,6 +211,7 @@ def evaluate_individual_on_single_enemies(individual, env):
         # Get fitness, player life, enemy life, and time for the current enemy
         fitness, player_life, enemy_life, time = env.play(pcont=np.array(individual))
 
+        # Assuming fitness_value is defined elsewhere in the code
         fitness_of_individual = fitness_value(enemy_life, player_life, time)
 
         # Store the results for each enemy (multi-objective metrics)
@@ -208,6 +221,7 @@ def evaluate_individual_on_single_enemies(individual, env):
             'time': time,
             'objectives': (100 - enemy_life, player_life, np.log(time + 1))  # The three objectives
         }
+
     return results
 
 def fitness_value(enemy_life: float, player_life: float, time: float) -> float:
@@ -528,7 +542,8 @@ def run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_i
 
     # Save the best individual
     best_individual = tools.selBest(population, k=1)[0]
-    best_filename = os.path.join(experiment_directory, f'best_solution_{group_name}.txt')
+    enemy_group_str = '_'.join(map(str, enemy_group))
+    best_filename = os.path.join(experiment_directory, f'best_solution_{group_name}_{enemy_group_str}.txt')
     np.savetxt(best_filename, best_individual)
     logger_instance.info(f"Best solution saved to {best_filename}")
 

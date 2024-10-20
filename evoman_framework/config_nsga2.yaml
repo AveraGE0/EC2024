@@ -10,7 +10,7 @@ experiment:
   pop_size: 400
   n_gen: 350
   cxpb: 0.7
-  mutpb: 0.05
+  mutpb: 0.10
   tournament_size: 3
   elitism_rate: 0.05
   random_seed_for_reproduction: on
