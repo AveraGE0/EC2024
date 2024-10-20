@@ -1,0 +1,79 @@
+# general
+name: "competition_test"
+n_processes: 15
+population_size: 400
+generations: 350
+
+allele_upper_limit: 10
+allele_lower_limit: -10
+
+fitness_func: default_fitness
+
+# saving
+save_best_individual: 
+  - [multi_gain, highest]
+  - ["fitness.values[0]", highest]
+
+# plotting (chapter, metric, plot name!)
+plot_dpi: 300
+island_plots: []
+population_plots: []
+
+# Neural Network
+n_inputs: 20
+hidden_size: 10
+n_outputs: 5
+init_low: -10.0
+init_up: 10.0
+
+# crossover
+p_crossover: 0.9
+SBX_eta: 5.0
+
+# mutation
+p_mutation: 0.3
+
+polynomial_eta: 10.0
+polynomial_low: -10.0
+polynomial_up: 10.0
+polynomial_indpb: 0.7
+
+# offspring selection
+sel_tournament_size: 4
+sel_metric: multi_gain
+
+# replacement selection
+rep_tournament_size: 4
+elitism_size: 4  # 0 to turn off
+elite_metric: [multi_gain, "fitness"]  # fitness for best run, multi_gain was not as good
+rep_metric: fitness
+
+# Fitness weighting
+fitness_weighting: proportional
+fw_n_enemies: 4
+fw_step_size: 0.2
+fw_step_decay: linear  # None
+fw_min_step: 0.1125 # should be 0,125
+
+# Fitness sharing
+fitness_sharing_sel: off  # on, parent selection
+fitness_sharing_rec: on  # off, recombination
+sharing_type: global   # islands alternatively
+distance_func: euclidean  # , hamming, same_loss
+distance_property: genotype # genotype to use list itself, defeated for same_loss
+sigma: 8 # in best same_defeat! 20
+
+# island parameters
+islands: 5
+migration_rate: 0.1
+migration_interval: 3
+migration_replace_metric: multi_gain
+mig_metric: fitness  # multi_gain
+migration_tournament_size: 2
+
+# environment specific
+multiplemode: "yes"
+level: 2
+train_enemy: [1, 2, 3, 4]
+n_repetitions: 10
+seeds: [42, 18, 24, 45, 19, 46, 44, 29, 6, 12]
