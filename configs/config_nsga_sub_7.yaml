@@ -1,0 +1,41 @@
+# general
+name: "competition_test"
+n_processes: 15
+population_size: 400
+generations: 350
+
+allele_upper_limit: 10
+allele_lower_limit: -10
+
+fitness_func: default_fitness
+
+# saving
+save_best_individual: 
+  - [multi_gain, highest]
+  - ["fitness.values[0]", highest]
+
+# Neural Network
+n_inputs: 20
+hidden_size: 10
+n_outputs: 5
+init_low: -10.0
+init_up: 10.0
+
+# crossover
+p_crossover: 0.9
+SBX_eta: 5.0
+
+# mutation
+p_mutation: 0.3
+
+polynomial_eta: 10.0
+polynomial_low: -10.0
+polynomial_up: 10.0
+polynomial_indpb: 0.7
+
+# environment specific
+multiplemode: "yes"
+level: 2
+train_enemy: [1, 2, 3, 4]
+n_repetitions: 1
+seeds: [29]
