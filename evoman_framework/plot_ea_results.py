@@ -97,14 +97,13 @@ def aggregate_metrics(experiment_directory, enemy_groups, multiple_runs, num_gen
                 print(f"  [Run {run_id}] 'Generation' column not found in {metrics_filename}. Available columns: {df.columns.tolist()}")
                 continue
 
-            # Filter generations up to num_generations
+            # Truncate data to the expected number of generations (351)
             df_filtered = df[df['Generation'] <= num_generations]
 
-            # Check if all generations are present
-            expected_generations = num_generations + 1  # Including generation 0
-            if len(df_filtered) != expected_generations:
-                print(f"  [Run {run_id}] Incomplete data in {metrics_filename}. Expected {expected_generations} generations, got {len(df_filtered)}. Skipping run.")
-                continue
+            # Check if there are extra generations (more than expected)
+            if len(df) > num_generations:
+                print(f"  [Run {run_id}] More than expected generations in {metrics_filename}. Truncating to {num_generations} generations.")
+                df_filtered = df_filtered.iloc[:num_generations+1]  # Keep only up to 351 generations (including generation 0)
 
             # Sort by Generation to ensure correct order
             df_filtered = df_filtered.sort_values('Generation')
@@ -139,7 +138,6 @@ def aggregate_metrics(experiment_directory, enemy_groups, multiple_runs, num_gen
         print("-" * 60)
 
     return aggregated_data
-
 
 def plot_metrics_over_generations(aggregated_data, num_generations, experiment_directory):
     metrics_to_plot = [
@@ -220,7 +218,6 @@ def plot_metrics_over_generations(aggregated_data, num_generations, experiment_d
             plt.close()
 
             print(f"Plot saved to {plot_filename}")
-
 
 
 def main():

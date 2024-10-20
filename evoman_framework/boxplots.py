@@ -41,10 +41,10 @@ for idx, enemy_group in enumerate(enemy_groups):
         continue
     # Get mean gains
     mean_gains = get_mean_gains(filename)
-    data.append(mean_gains)
+    data.append(mean_gains)  # Only add to data if file exists
     # Create a label based on the enemy group
     group_label = f'Group {enemy_group_str}'
-    labels.append(group_label)
+    labels.append(group_label)  # Only add to labels if file exists
     # Append position
     positions.append(pos)
     pos += 1  # Increment position
@@ -52,27 +52,31 @@ for idx, enemy_group in enumerate(enemy_groups):
     if (idx + 1) % 2 == 0:
         pos += 1  # Leave a space
 
-# Create the boxplots
-fig, ax = plt.subplots(figsize=(10, 6))
+# Check if there's any data to plot
+if len(data) == 0:
+    print("No data available to plot. Exiting.")
+else:
+    # Create the boxplots
+    fig, ax = plt.subplots(figsize=(10, 6))
 
-bp = ax.boxplot(data, positions=positions, widths=0.6, patch_artist=True)
+    bp = ax.boxplot(data, positions=positions, widths=0.6, patch_artist=True)
 
-# Customize the plot
-ax.set_xticks(positions)
-ax.set_xticklabels(labels, rotation=45, ha='right')
-ax.set_ylabel('Mean Gains')
-ax.set_title('Comparison of Mean Gains between Enemy Groups')
+    # Customize the plot
+    ax.set_xticks(positions)
+    ax.set_xticklabels(labels, rotation=45, ha='right')
+    ax.set_ylabel('Mean Gains')
+    ax.set_title('Comparison of Mean Gains between Enemy Groups')
 
-# Optional: Customize boxplot colors
-colors = ['skyblue', 'lightgreen', 'lightcoral', 'plum']
-for patch, color in zip(bp['boxes'], colors):
-    patch.set_facecolor(color)
+    # Optional: Customize boxplot colors
+    colors = ['skyblue', 'lightgreen', 'lightcoral', 'plum']
+    for patch, color in zip(bp['boxes'], colors):
+        patch.set_facecolor(color)
 
-plt.tight_layout()
+    plt.tight_layout()
 
-# Save the plot as a PNG file in the experiment directory
-output_filename = os.path.join(experiment_directory, 'mean_gains_boxplot.png')
-plt.savefig(output_filename)
-print(f"Plot saved as {output_filename}")
+    # Save the plot as a PNG file in the experiment directory
+    output_filename = os.path.join(experiment_directory, 'mean_gains_boxplot.png')
+    plt.savefig(output_filename)
+    print(f"Plot saved as {output_filename}")
 
-plt.show()
+    plt.show()
