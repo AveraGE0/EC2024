@@ -12,6 +12,7 @@ class IslandsModel:
         self,
         toolbox: base.Toolbox,
         n_islands: int,
+        seed: int,
         total_population: int =None,
         island_population: int =None,
     ) -> None:
@@ -20,6 +21,7 @@ class IslandsModel:
         Args:
             toolbox (base.Toolbox): DEAP toolbox (to initialize the population).
             n_islands (int): number of islands created.
+            seed (int): seed for Island model. Set to keep results repeatable.
             total_population (int, optional): Size of the total population. Alternative to
             island_population parameter. Defaults to None.
             island_population (int, optional): Size of an individual island. Alternative to
@@ -45,8 +47,8 @@ class IslandsModel:
         if total_population < n_islands:
             raise ValueError("Error, the population size in combination with the amount of islands"\
                              f"does not make sense: {total_population} in {self.n_islands}!?")
-        np.random.seed(42)
-        random.seed(42)
+        np.random.seed(seed)
+        random.seed(seed)
         self.islands_merged = toolbox.population(n=total_population)
         self.islands_borders = list(
             range(0, total_population, (total_population//n_islands))

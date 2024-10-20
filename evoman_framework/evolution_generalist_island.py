@@ -2,6 +2,7 @@
 import os
 import pickle
 import itertools
+import time
 import yaml
 import matplotlib.pyplot as plt
 import numpy as np
@@ -71,6 +72,7 @@ def evolution(
     islands = IslandsModel(
         toolbox,
         n_islands=config["islands"],
+        seed=config["seed"],
         total_population=mu,
     )
 
@@ -187,11 +189,6 @@ def evolution(
 
         # display stats above progress bar
         tqdm.write(logbook.stream)
-
-
-        # plots only every plot_interval generations
-        if (current_gen + 1) % config["plot_interval"] != 0:
-            continue
 
         for chapter, metric, plot_name in config["island_plots"]:
             fig = plot_island_metric(
@@ -360,23 +357,30 @@ def run_experiment(config: dict) -> None:
             metric=save_by_metric,
             best=best
         )
+    
+    p_env.stop_processes()
 
 
 if __name__ == '__main__':
     np.set_printoptions(precision=3)
-    CONFIG_NAME = "config_competition_test.yaml"
+    CONFIG_NAME = "config_island_sel_enemy.yaml"
     # Load the configuration from a YAML file
     with open(f"../{CONFIG_NAME}", "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
     # run experiment
-    run_experiment(config)
+    for i_run, seed in zip(list(range(config['n_repetitions'])), config['seeds']):
+        config["name"] = CONFIG_NAME.split(".")[0] + f"_{i_run}"
+        config["seed"] = seed
+        run_experiment(config)
+        # let cpu cool down
+        time.sleep(60)
 
-    for metric, metric_best in config["save_best_individual"]:
-        with open(
-            os.path.join('../experiments', config["name"], f"best_individual_{metric}.pkl"),
-            mode="rb"
-        ) as f_ind:
-            individual = pickle.load(f_ind)
-
-            show_run(individual=individual, enemies=[1, 2, 3, 4, 5, 6, 7, 8], config=config)
+    #for metric, metric_best in config["save_best_individual"]:
+    #    with open(
+    #        os.path.join('../experiments', config["name"], f"best_individual_{metric}.pkl"),
+    #        mode="rb"
+    #    ) as f_ind:
+    #        individual = pickle.load(f_ind)
+    #
+    #        show_run(individual=individual, enemies=[1, 2, 3, 4, 5, 6, 7, 8], config=config)
