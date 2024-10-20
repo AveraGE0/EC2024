@@ -6,12 +6,15 @@ import yaml
 import logging
 from logging.config import dictConfig
 from deap import base, creator, tools, algorithms
+from deap.tools import Logbook
 from evoman.environment import Environment
 from demo_controller import player_controller
 import matplotlib.pyplot as plt
 from multiprocessing import Pool, cpu_count
 import sys
 from typing import List, Tuple, Dict
+import csv
+
 
 # --------------------------
 # Load Configuration
@@ -178,19 +181,43 @@ def initialize_environment(experiment_name, enemies, multiplemode, n_hidden_neur
 # --------------------------
 
 def evaluate(individual, env):
-    """Evaluate an individual against all enemies in the current group simultaneously."""
+    """Evaluate an individual and store defeated enemies count."""
+    # Override cons_multi to return individual values
+    env.cons_multi = lambda x: x
+
     # Play the game with the current individual's parameters
     fitness, player_life, enemy_life, time = env.play(pcont=np.array(individual))
-    # Return the three objectives:
-    # 1. Maximize reduction in enemy_life (100 - enemy_life)
-    # 2. Maximize player_life
-    # 3. Minimize log(time)
-    return 100 - enemy_life, player_life, np.log(time + 1),
 
-from typing import Dict, Any, List
-import numpy as np
+    # Ensure arrays are NumPy arrays for easy manipulation
+    fitness = np.array(fitness)
+    player_life = np.array(player_life)
+    enemy_life = np.array(enemy_life)
+    time = np.array(time)
 
-def evaluate_individual_on_single_enemies(individual: List[float], env: Any) -> Dict[str, Dict[str, Any]]:
+    # Ensure time is non-negative
+    time[time < 0] = 0
+
+    # Count defeated enemies using the modified function
+    defeated_enemies = count_defeated_enemies(enemy_life)
+
+    # Store defeated enemies count in the individual
+    individual.defeated_enemies = defeated_enemies
+
+    # Aggregate objectives as desired (e.g., sum, mean)
+    total_fitness = np.sum(fitness)
+    total_player_life = np.sum(player_life)
+    total_log_time = np.sum(np.log(time + 1))
+
+    # Return the aggregated objectives
+    return total_fitness, total_player_life, total_log_time
+
+def count_defeated_enemies(enemy_life_list) -> int:
+    """Counts the number of defeated enemies from the enemy life values."""
+    defeated_enemies = sum(1 for life in enemy_life_list if life <= 0)
+    return defeated_enemies
+
+
+def evaluate_individual_on_single_enemies(individual: List[float], env: any) -> Dict[str, Dict[str, any]]:
     """Evaluate an individual against each enemy separately.
 
     Args:
@@ -211,6 +238,9 @@ def evaluate_individual_on_single_enemies(individual: List[float], env: Any) -> 
         # Get fitness, player life, enemy life, and time for the current enemy
         fitness, player_life, enemy_life, time = env.play(pcont=np.array(individual))
 
+        # Ensure time is non-negative
+        time = max(time, 0)
+
         # Assuming fitness_value is defined elsewhere in the code
         fitness_of_individual = fitness_value(enemy_life, player_life, time)
 
@@ -226,6 +256,8 @@ def evaluate_individual_on_single_enemies(individual: List[float], env: Any) -> 
 
 def fitness_value(enemy_life: float, player_life: float, time: float) -> float:
     """Calculate a fitness score for comparison with other models."""
+    # Ensure time is non-negative
+    time = max(time, 0)
     return 0.9 * (100 - enemy_life) + 0.1 * player_life - np.log(time + 1)
 
 def calculate_population_diversity_euclidian(population: List) -> float:
@@ -317,9 +349,9 @@ def euclidean_distance(ind1, ind2):
 # --------------------------
 
 def log_generation_metrics(population: List, generation: int, logger_instance, experiment_directory, run_id,
-                           enemy_group) -> None:
+                           enemy_group, logbook) -> None:
     """
-    Log generation metrics including scalar fitness values and diversity.
+    Log generation metrics including scalar fitness values, diversity, and defeated enemies.
 
     Parameters:
     - population: List of individuals in the current population.
@@ -328,42 +360,109 @@ def log_generation_metrics(population: List, generation: int, logger_instance, e
     - experiment_directory: Directory where experiment data is stored.
     - run_id: Identifier for the current run.
     - enemy_group: List representing the current enemy group.
+    - logbook: The logbook object to record metrics.
     """
 
     # Define the scalar fitness formula
     def calculate_scalar_fitness(individual_fitness):
         """
         Calculate scalar fitness based on the formula:
-        fitness = (100 - enemy_life) + player_life - log(t)
+        fitness = (100 - enemy_life) + player_life - log(time + 1)
 
         Parameters:
-        - individual_fitness: Tuple containing (100 - enemy_life, player_life, log(t + 1))
+        - individual_fitness: Tuple containing (total_fitness, total_player_life, total_log_time)
 
         Returns:
         - Scalar fitness value as a float.
         """
-        enemy_life_component = individual_fitness[0]  # 100 - enemy_life
-        player_life = individual_fitness[1]  # player_life
-        log_time = individual_fitness[2]  # log(t + 1)
-        return enemy_life_component + player_life - log_time
+        total_fitness = individual_fitness[0]
+        total_player_life = individual_fitness[1]
+        total_log_time = individual_fitness[2]
+        return total_fitness + total_player_life - total_log_time
 
     # Calculate scalar fitness for each individual
     scalar_fitness_values = [calculate_scalar_fitness(ind.fitness.values) for ind in population]
 
-    # Calculate average and maximum scalar fitness
+    # Fitness metrics
     avg_fitness = np.mean(scalar_fitness_values)
     max_fitness = np.max(scalar_fitness_values)
+    std_fitness = np.std(scalar_fitness_values)
+
+    # Defeated enemies metrics (using the defeated_enemies attribute from individuals)
+    defeated_enemies_counts = [ind.defeated_enemies for ind in population]
+    avg_defeated_enemies = np.mean(defeated_enemies_counts)
+    max_defeated_enemies = np.max(defeated_enemies_counts)
+
+    # Gain, life, and time metrics
+    # Since we aggregated these in the evaluate function, we can use them directly
+    total_fitness_values = [ind.fitness.values[0] for ind in population]
+    total_player_life_values = [ind.fitness.values[1] for ind in population]
+    total_log_time_values = [ind.fitness.values[2] for ind in population]
+
+    # Since total_fitness was already aggregated, we can calculate gain accordingly
+    gain_list = [pl - (tf - pl + tlt) for tf, pl, tlt in zip(total_fitness_values, total_player_life_values, total_log_time_values)]
+    avg_gain = np.mean(gain_list)
+    max_gain = np.max(gain_list)
+
+    avg_life = np.mean(total_player_life_values)
+    max_life = np.max(total_player_life_values)
+
+    # Reversing log(time + 1) to get time
+    time_list = [np.exp(tlt) - 1 for tlt in total_log_time_values]
+    avg_time = np.mean(time_list)
+    min_time = np.min(time_list)
+
+    # Enemies metrics
+    # Since max_defeated_enemies is the maximum number of enemies an individual has defeated
+    # and the number of enemies is len(enemy_group), we can determine if any individual defeated all enemies
+    is_def = 1 if max_defeated_enemies == len(enemy_group) else 0
+
+    # Diversity metrics
+    euclidean_diversity = calculate_population_diversity_euclidian(population)
+    std_dev = calculate_population_std(population)
 
     # Log the results for this generation
     logger_instance.info(
-        f"Generation {generation}: Avg Scalar Fitness = {avg_fitness:.4f}, Max Scalar Fitness = {max_fitness:.4f}"
+        f"Generation {generation}: Avg Fitness = {avg_fitness:.4f}, Max Fitness = {max_fitness:.4f}, Std Dev = {std_fitness:.4f}"
+    )
+    logger_instance.info(
+        f"Defeated Enemies - Avg: {avg_defeated_enemies:.2f}, Max: {max_defeated_enemies}"
+    )
+    logger_instance.info(
+        f"Gain - Avg: {avg_gain:.4f}, Max: {max_gain:.4f}"
+    )
+    logger_instance.info(
+        f"Player Life - Avg: {avg_life:.4f}, Max: {max_life:.4f}"
+    )
+    logger_instance.info(
+        f"Time - Avg: {avg_time:.4f}, Min: {min_time:.4f}"
+    )
+    logger_instance.info(
+        f"Diversity - Euclidean: {euclidean_diversity:.4f}, Std Dev: {std_dev:.4f}"
     )
 
+    # Update the logbook
+    defeated_enemies_stats = {'avg': avg_defeated_enemies, 'max': max_defeated_enemies}
+    fitness_stats = {'avg': avg_fitness, 'max': max_fitness, 'std': std_fitness}
+    gain_stats = {'avg': avg_gain, 'max': max_gain}
+    life_stats = {'avg': avg_life, 'max': max_life}
+    time_stats = {'avg': avg_time, 'min': min_time}
+    enemies_stats = {'avg_defeated_enemies': avg_defeated_enemies, 'is_def': is_def}
+    diversity_stats = {'euclidean': euclidean_diversity, 'std_dev': std_dev}
+
+    logbook.record(gen=generation, defeated_enemies=defeated_enemies_stats,
+                   fitness=fitness_stats, gain=gain_stats, life=life_stats, time=time_stats,
+                   enemies=enemies_stats, diversity=diversity_stats)
+
     # Optionally, store the metrics to a CSV file for later aggregation
-    store_generation_metrics(run_id, enemy_group, generation, avg_fitness, max_fitness, experiment_directory)
-
-
-def store_generation_metrics(run_id, enemy_group, generation, avg_fitness, max_fitness, experiment_directory):
+    store_generation_metrics(run_id, enemy_group, generation, avg_fitness, max_fitness,
+                             avg_defeated_enemies, max_defeated_enemies,
+                             avg_gain, max_gain, avg_life, max_life, avg_time, min_time,
+                             euclidean_diversity, std_dev, experiment_directory)
+def store_generation_metrics(run_id, enemy_group, generation, avg_fitness, max_fitness,
+                             avg_defeated_enemies, max_defeated_enemies,
+                             avg_gain, max_gain, avg_life, max_life, avg_time, min_time,
+                             euclidean_diversity, std_dev, experiment_directory):
     """
     Store generation metrics to a CSV file.
 
@@ -373,6 +472,16 @@ def store_generation_metrics(run_id, enemy_group, generation, avg_fitness, max_f
     - generation: Current generation number.
     - avg_fitness: Average scalar fitness of the population.
     - max_fitness: Maximum scalar fitness in the population.
+    - avg_defeated_enemies: Average number of defeated enemies.
+    - max_defeated_enemies: Maximum number of defeated enemies.
+    - avg_gain: Average gain of the population.
+    - max_gain: Maximum gain in the population.
+    - avg_life: Average player life.
+    - max_life: Maximum player life.
+    - avg_time: Average time.
+    - min_time: Minimum time.
+    - euclidean_diversity: Average Euclidean diversity of the population.
+    - std_dev: Standard deviation of the population.
     - experiment_directory: Directory where experiment data is stored.
     """
     import os
@@ -385,20 +494,33 @@ def store_generation_metrics(run_id, enemy_group, generation, avg_fitness, max_f
     # Check if the file exists; if not, write the header
     file_exists = os.path.isfile(metrics_filename)
     with open(metrics_filename, 'a', newline='') as csvfile:
-        fieldnames = ['Generation', 'Avg_Scalar_Fitness', 'Max_Scalar_Fitness']
+        fieldnames = ['Generation', 'Avg_Scalar_Fitness', 'Max_Scalar_Fitness',
+                      'Avg_Defeated_Enemies', 'Max_Defeated_Enemies',
+                      'Avg_Gain', 'Max_Gain',
+                      'Avg_Life', 'Max_Life',
+                      'Avg_Time', 'Min_Time',
+                      'Euclidean_Diversity', 'Std_Dev']
+        # Define the writer here
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
         if not file_exists:
             writer.writeheader()
 
         # Write the current generation's metrics
         writer.writerow({
             'Generation': generation,
-            'Avg_Scalar_Fitness': f"{avg_fitness:.4f}",
-            'Max_Scalar_Fitness': f"{max_fitness:.4f}"
+            'Avg_Scalar_Fitness': avg_fitness,
+            'Max_Scalar_Fitness': max_fitness,
+            'Avg_Defeated_Enemies': avg_defeated_enemies,
+            'Max_Defeated_Enemies': max_defeated_enemies,
+            'Avg_Gain': avg_gain,
+            'Max_Gain': max_gain,
+            'Avg_Life': avg_life,
+            'Max_Life': max_life,
+            'Avg_Time': avg_time,
+            'Min_Time': min_time,
+            'Euclidean_Diversity': euclidean_diversity,
+            'Std_Dev': std_dev
         })
-
-
 # --------------------------
 # Analysis Functions
 # --------------------------
@@ -433,13 +555,26 @@ def run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_i
 
     population = toolbox.population(n=pop_size)
 
+    # Initialize the logbook
+    logbook = Logbook()
+    logbook.header = ("gen", "defeated", "defeated_enemies", "fitness", "gain", "life", "time", "enemies", "diversity")
+    logbook.chapters["defeated"].header = ("avg", "max")
+    logbook.chapters["defeated_enemies"].header = ("avg", "max")
+    logbook.chapters["fitness"].header = ("avg", "max", "std")
+    logbook.chapters["gain"].header = ("avg_sum", "max_sum")
+    logbook.chapters["life"].header = ("avg_sum", "max_sum")
+    logbook.chapters["time"].header = ("avg_sum", "min_sum")
+    logbook.chapters["enemies"].header = ("avg_def", "is_def")
+    logbook.chapters["diversity"].header = ("euclidean", "std_dev")
+
+
     # Evaluate initial population
     fitnesses = toolbox.map(lambda ind: toolbox.evaluate(ind, train_env), population)
     for ind, fit in zip(population, fitnesses):
         ind.fitness.values = fit
 
     # Log initial metrics, including average and max fitness
-    log_generation_metrics(population, 0, logger_instance, experiment_directory, run_id, enemy_group)  # Generation 0
+    log_generation_metrics(population, 0, logger_instance, experiment_directory, run_id, enemy_group, logbook)  # Generation 0
 
     # Begin the evolution
     for gen in range(1, n_gen + 1):
@@ -538,7 +673,7 @@ def run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_i
             sys.exit(1)
 
         # Log metrics for this generation, including average and max fitness
-        log_generation_metrics(population, gen, logger_instance, experiment_directory, run_id, enemy_group)  # Generation N
+        log_generation_metrics(population, gen, logger_instance, experiment_directory, run_id, enemy_group, logbook)  # Generation N
 
     # Save the best individual
     best_individual = tools.selBest(population, k=1)[0]
@@ -547,12 +682,33 @@ def run_evolutionary_algorithm(run_id, toolbox, train_env, enemy_group, logger_i
     np.savetxt(best_filename, best_individual)
     logger_instance.info(f"Best solution saved to {best_filename}")
 
+    # Save the logbook
+    enemy_group_str = '_'.join(map(str, enemy_group))
+    logbook_filename = os.path.join(experiment_directory, f'logbook_run_{run_id}_group_{enemy_group_str}.csv')
+    # Convert logbook to DataFrame and save
+    import pandas as pd
+
+    # Prepare data for DataFrame
+    records = []
+    for record in logbook:
+        entry = {}
+        for key in record:
+            if isinstance(record[key], dict):
+                for subkey, value in record[key].items():
+                    entry[f"{key}_{subkey}"] = value
+            else:
+                entry[key] = record[key]
+        records.append(entry)
+    # Convert to DataFrame and save
+    logbook_df = pd.DataFrame(records)
+    logbook_filename = os.path.join(experiment_directory, f'logbook_run_{run_id}_group_{enemy_group_str}.csv')
+    logbook_df.to_csv(logbook_filename, index=False)
+    logger_instance.info(f"Logbook saved to {logbook_filename}")
+
     return population, best_individual, run_id
 
 
-import os
-import csv
-import numpy as np
+
 
 
 def aggregate_metrics(experiment_directory, enemy_groups, multiple_runs, num_generations):

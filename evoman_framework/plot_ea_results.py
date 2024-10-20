@@ -1,9 +1,8 @@
 import os
-import csv
 import numpy as np
 import matplotlib.pyplot as plt
 import yaml
-import pandas as pd  # Added for easier data handling
+import pandas as pd
 
 
 def load_config(config_file='config_nsga2.yaml'):
@@ -31,7 +30,7 @@ def load_config(config_file='config_nsga2.yaml'):
 
 def aggregate_metrics(experiment_directory, enemy_groups, multiple_runs, num_generations):
     """
-    Aggregate mean and max scalar fitness metrics across multiple runs for each enemy group.
+    Aggregate all metrics across multiple runs for each enemy group.
 
     Parameters:
     - experiment_directory: str, path to the experiment directory.
@@ -43,10 +42,11 @@ def aggregate_metrics(experiment_directory, enemy_groups, multiple_runs, num_gen
     - aggregated_data: dict, structured as:
         {
             enemy_group_tuple: {
-                'mean_fitness_mean': np.array([...]),
-                'mean_fitness_std': np.array([...]),
-                'max_fitness_mean': np.array([...]),
-                'max_fitness_std': np.array([...])
+                'metric_name': {
+                    'mean': np.array([...]),
+                    'std': np.array([...])
+                },
+                ...
             },
             ...
         }
@@ -55,12 +55,12 @@ def aggregate_metrics(experiment_directory, enemy_groups, multiple_runs, num_gen
 
     for group in enemy_groups:
         group_tuple = tuple(group)
-        aggregated_data[group_tuple] = {
-            'mean_fitness_runs': [],
-            'max_fitness_runs': []
-        }
+        aggregated_data[group_tuple] = {}  # Initialize dictionary for this enemy group
 
         print(f"\nProcessing Enemy Group: {group_tuple}")
+
+        # Initialize a dictionary to store metrics for all runs
+        metrics_runs = {}
 
         for run_id in range(1, multiple_runs + 1):
             group_str = '_'.join(map(str, group))
@@ -77,10 +77,24 @@ def aggregate_metrics(experiment_directory, enemy_groups, multiple_runs, num_gen
                 print(f"  [Run {run_id}] Error reading {metrics_filename}: {e}. Skipping run.")
                 continue
 
-            # Validate required columns
-            required_columns = {'Generation', 'Avg_Scalar_Fitness', 'Max_Scalar_Fitness'}
-            if not required_columns.issubset(df.columns):
-                print(f"  [Run {run_id}] Missing columns in {metrics_filename}. Required columns: {required_columns}. Skipping run.")
+            # Convert all relevant columns to numeric types
+            numeric_columns = [
+                'Avg_Scalar_Fitness', 'Max_Scalar_Fitness',
+                'Avg_Defeated_Enemies', 'Max_Defeated_Enemies',
+                'Avg_Gain', 'Max_Gain',
+                'Avg_Life', 'Max_Life',
+                'Avg_Time', 'Min_Time',
+                'Euclidean_Diversity', 'Std_Dev'
+            ]
+            for col in numeric_columns:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+
+            # Ensure 'Generation' column is present and numeric
+            if 'Generation' in df.columns:
+                df['Generation'] = pd.to_numeric(df['Generation'], errors='coerce')
+            else:
+                print(f"  [Run {run_id}] 'Generation' column not found in {metrics_filename}. Available columns: {df.columns.tolist()}")
                 continue
 
             # Filter generations up to num_generations
@@ -95,94 +109,118 @@ def aggregate_metrics(experiment_directory, enemy_groups, multiple_runs, num_gen
             # Sort by Generation to ensure correct order
             df_filtered = df_filtered.sort_values('Generation')
 
-            # Append fitness data
-            run_mean_fitness = df_filtered['Avg_Scalar_Fitness'].values
-            run_max_fitness = df_filtered['Max_Scalar_Fitness'].values
-
-            aggregated_data[group_tuple]['mean_fitness_runs'].append(run_mean_fitness)
-            aggregated_data[group_tuple]['max_fitness_runs'].append(run_max_fitness)
+            # Collect metrics
+            for col in numeric_columns:
+                if col in df_filtered.columns:
+                    if col not in metrics_runs:
+                        metrics_runs[col] = []
+                    metrics_runs[col].append(df_filtered[col].values)
 
             print(f"  [Run {run_id}] Successfully aggregated data.")
 
-        # Convert lists to NumPy arrays for statistical computations
-        mean_fitness_runs = np.array(aggregated_data[group_tuple]['mean_fitness_runs'])
-        max_fitness_runs = np.array(aggregated_data[group_tuple]['max_fitness_runs'])
-
-        if mean_fitness_runs.size == 0 or max_fitness_runs.size == 0:
-            print(f"No valid data collected for enemy group {group_tuple}.")
-            del aggregated_data[group_tuple]  # Remove the group since no data is present
-            continue
-
         # Compute mean and std deviation across runs for each generation
-        aggregated_data[group_tuple]['mean_fitness_mean'] = np.mean(mean_fitness_runs, axis=0)
-        aggregated_data[group_tuple]['mean_fitness_std'] = np.std(mean_fitness_runs, axis=0)
-        aggregated_data[group_tuple]['max_fitness_mean'] = np.mean(max_fitness_runs, axis=0)
-        aggregated_data[group_tuple]['max_fitness_std'] = np.std(max_fitness_runs, axis=0)
+        for metric_name, runs_data in metrics_runs.items():
+            runs_array = np.array(runs_data)
 
-        # Debugging: Print the first few std values to verify
-        print(f"  Enemy Group {group_tuple}:")
-        print(f"    Mean Fitness Mean (first 5 generations): {aggregated_data[group_tuple]['mean_fitness_mean'][:5]}")
-        print(f"    Mean Fitness Std  (first 5 generations): {aggregated_data[group_tuple]['mean_fitness_std'][:5]}")
-        print(f"    Max Fitness Mean  (first 5 generations): {aggregated_data[group_tuple]['max_fitness_mean'][:5]}")
-        print(f"    Max Fitness Std   (first 5 generations): {aggregated_data[group_tuple]['max_fitness_std'][:5]}")
+            if runs_array.size == 0:
+                continue  # Skip if no data
+
+            # Compute mean and std across runs for each generation
+            metric_mean = np.nanmean(runs_array, axis=0)
+            metric_std = np.nanstd(runs_array, axis=0)
+
+            # Store in aggregated_data
+            aggregated_data[group_tuple][metric_name] = {
+                'mean': metric_mean,
+                'std': metric_std
+            }
+
+        print(f"  [Enemy Group {group_tuple}] Metrics aggregated.")
         print("-" * 60)
 
     return aggregated_data
 
 
-def plot_fitness_over_generations(aggregated_data, num_generations, experiment_directory):
-    """
-    Generate and save plots for fitness over generations for each enemy group.
+def plot_metrics_over_generations(aggregated_data, num_generations, experiment_directory):
+    metrics_to_plot = [
+        ('Avg_Scalar_Fitness', 'Max_Scalar_Fitness'),
+        ('Avg_Gain', 'Max_Gain'),
+        ('Avg_Life', 'Max_Life'),
+        ('Avg_Defeated_Enemies', 'Max_Defeated_Enemies'),
+        ('Avg_Time', 'Min_Time'),
+        ('Euclidean_Diversity', 'Std_Dev')
+    ]
 
-    Parameters:
-    - aggregated_data: dict, aggregated fitness metrics.
-    - num_generations: int, total number of generations.
-    - experiment_directory: str, path to the experiment directory.
-    """
     for enemy_group, metrics in aggregated_data.items():
         generations = np.arange(0, num_generations + 1)  # Including generation 0
 
-        plt.figure(figsize=(12, 8))
-
-        # Plot Mean of Mean Fitness
-        plt.plot(generations, metrics['mean_fitness_mean'], label='Mean of Mean Fitness', color='blue', linewidth=2)
-        plt.fill_between(
-            generations,
-            metrics['mean_fitness_mean'] - metrics['mean_fitness_std'],
-            metrics['mean_fitness_mean'] + metrics['mean_fitness_std'],
-            color='blue',
-            alpha=0.3,
-            label='Std Dev of Mean Fitness'
-        )
-
-        # Plot Mean of Max Fitness
-        plt.plot(generations, metrics['max_fitness_mean'], label='Mean of Max Fitness', color='red', linestyle='--', linewidth=2)
-        plt.fill_between(
-            generations,
-            metrics['max_fitness_mean'] - metrics['max_fitness_std'],
-            metrics['max_fitness_mean'] + metrics['max_fitness_std'],
-            color='red',
-            alpha=0.3,
-            label='Std Dev of Max Fitness'
-        )
-
-        # Customize the plot
         enemy_group_str = ', '.join(map(str, enemy_group))
-        plt.title(f'Fitness over Generations for Enemy Group [{enemy_group_str}]', fontsize=16)
-        plt.xlabel('Generation', fontsize=14)
-        plt.ylabel('Scalar Fitness', fontsize=14)
-        plt.legend(fontsize=12)
-        plt.grid(True, linestyle='--', alpha=0.6)
-        plt.xticks(fontsize=12)
-        plt.yticks(fontsize=12)
-        plt.tight_layout()
+        group_filename_part = '_'.join(map(str, enemy_group))
 
-        # Save the plot
-        plot_filename = os.path.join(experiment_directory, f'fitness_plot_group_{"_".join(map(str, enemy_group))}.png')
-        plt.savefig(plot_filename, dpi=300)
-        plt.close()
+        # Create a figure for each pair of metrics
+        for metric_pair in metrics_to_plot:
+            plt.figure(figsize=(12, 8))
 
-        print(f"Plot saved to {plot_filename}")
+            for metric_name in metric_pair:
+                if metric_name in metrics:
+                    mean_values = metrics[metric_name]['mean']
+                    std_values = metrics[metric_name]['std']
+
+                    # Add debug statements to check the data
+                    print(f"\nPlotting {metric_name} for Enemy Group {enemy_group}:")
+                    print(f"Mean values: {mean_values}")
+                    print(f"Std values: {std_values}")
+
+                    # Check if mean_values contains valid data
+                    if np.isnan(mean_values).all():
+                        print(f"Warning: All mean values for {metric_name} are NaN. Skipping plot.")
+                        continue
+
+                    # Determine plot style based on metric name
+                    if 'Avg' in metric_name:
+                        label = f"Mean of {metric_name.replace('_', ' ')}"
+                        color = 'blue'
+                        linestyle = '-'
+                    elif 'Max' in metric_name:
+                        label = f"Mean of {metric_name.replace('_', ' ')}"
+                        color = 'red'
+                        linestyle = '--'
+                    elif 'Min' in metric_name:
+                        label = f"Mean of {metric_name.replace('_', ' ')}"
+                        color = 'green'
+                        linestyle = '-.'
+                    else:
+                        label = f"Mean of {metric_name.replace('_', ' ')}"
+                        color = 'purple'
+                        linestyle = ':'
+
+                    plt.plot(generations, mean_values, label=label, color=color, linestyle=linestyle, linewidth=2)
+                    plt.fill_between(
+                        generations,
+                        mean_values - std_values,
+                        mean_values + std_values,
+                        color=color,
+                        alpha=0.3,
+                        label=f"Std Dev of {metric_name.replace('_', ' ')}"
+                    )
+
+            # Customize the plot
+            plt.title(f'{metric_pair[0].replace("_", " ")} and {metric_pair[1].replace("_", " ")} over Generations\nEnemy Group [{enemy_group_str}]', fontsize=16)
+            plt.xlabel('Generation', fontsize=14)
+            plt.ylabel('Value', fontsize=14)
+            plt.legend(fontsize=12)
+            plt.grid(True, linestyle='--', alpha=0.6)
+            plt.xticks(fontsize=12)
+            plt.yticks(fontsize=12)
+            plt.tight_layout()
+
+            # Save the plot
+            plot_filename = os.path.join(experiment_directory, f'plot_{"_".join(metric_pair)}_group_{group_filename_part}.png')
+            plt.savefig(plot_filename, dpi=300)
+            plt.close()
+
+            print(f"Plot saved to {plot_filename}")
+
 
 
 def main():
@@ -213,7 +251,7 @@ def main():
 
     # Generate plots
     print("Generating plots...")
-    plot_fitness_over_generations(aggregated_data, num_generations, experiment_directory)
+    plot_metrics_over_generations(aggregated_data, num_generations, experiment_directory)
 
     print("All plots have been generated and saved.")
 

@@ -1,6 +1,6 @@
 
 experiment:
-  name: 'NSGA2_testrun'
+  name: 'NSGA_run3'
   num_inputs: 20
   num_outputs: 5
   n_hidden_neurons: 10
@@ -21,7 +21,7 @@ experiment:
 parallel:
   enable: true
   processes: 'max'  # Number of parallel processes for evaluations
-  reserved_cores: 2 # Number of reserved cores for your pc to run
+  reserved_cores: 1 # Number of reserved cores for your pc to run
   multiple_runs: 10  # Number of independent evolutionary runs
 
 logging:
